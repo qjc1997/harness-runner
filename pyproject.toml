@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "harness-runner"
+version = "0.0.1"
+description = "Autonomous multi-agent coding harness. Step 1: Planner + Generator (no Evaluator yet)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Qiao Jiacheng" }]
+
+[project.scripts]
+harness-runner = "harness_runner.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

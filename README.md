@@ -26,32 +26,37 @@ Given a one-paragraph product brief, the harness runs two roles in turn:
    - implements, verifies, flips that one feature's `passes` flag, commits
    - appends a 3–5 line summary to `claude-progress.txt`
 
-Each shift starts with no memory of the previous one — like an engineer arriving for a new shift,
-reconstructing context from disk.
+Each shift starts with no memory of the previous one — like an engineer arriving for a new shift, reconstructing context from disk.
 
 ## Requirements
 
-- [Bun](https://bun.sh/) ≥ 1.1
-- [Claude Code CLI](https://docs.claude.com/en/docs/claude-code/) on `PATH`
+- Python ≥ 3.9 (system Python on recent macOS works)
+- [Claude Code CLI](https://docs.claude.com/en/docs/claude-code/) on `PATH` (`claude` command)
 - `git`
 
 ## Install
 
 ```bash
-bun install
+# Editable install from the repo root, in a venv if you prefer
+python3 -m venv .venv && source .venv/bin/activate
+pip install --upgrade pip            # macOS-bundled pip 21.x can't do PEP 660 editable installs
+pip install -e .
 ```
+
+After install, the `harness-runner` command is on your `PATH`.
+You can also run without install: `python -m harness_runner ...` from the repo root.
 
 ## Use
 
 ```bash
 # 1. Plan a project from a brief
-bun src/cli.ts plan mini-hex "A minimal Hex-like data notebook. Cells for Python (shared kernel), SQL (DuckDB), and AI generation that turns natural language into code. React+Vite frontend, FastAPI backend."
+harness-runner plan mini-hex "A minimal Hex-like data notebook. Cells for Python (shared kernel), SQL (DuckDB), and AI generation that turns natural language into code. React+Vite frontend, FastAPI backend."
 
 # 2. Run one generator shift
-bun src/cli.ts generate mini-hex
+harness-runner generate mini-hex
 
 # 3. Run N shifts back-to-back
-bun src/cli.ts generate-loop mini-hex 5
+harness-runner generate-loop mini-hex 5
 ```
 
 Built projects live under `projects/<name>/` (git-ignored from the harness repo;
@@ -61,24 +66,37 @@ each project has its own internal git history that survives across shifts).
 
 ```
 prompts/
-  planner.md          # planner system prompt
-  generator.md        # generator system prompt
+  planner.md                 # planner system prompt
+  generator.md               # generator system prompt
 src/
-  cli.ts              # argv parsing
-  claude.ts           # claude CLI subprocess wrapper (stream-json events)
-  paths.ts            # repo-relative paths + event formatter
-  roles/
-    planner.ts
-    generator.ts
-projects/             # gitignored — runtime output of builds
+  harness_runner/
+    __init__.py
+    __main__.py              # `python -m harness_runner` entry
+    cli.py                   # argv parsing
+    claude.py                # claude CLI subprocess wrapper (stream-json events)
+    paths.py                 # repo-relative paths + event formatter
+    roles/
+      __init__.py
+      planner.py
+      generator.py
+projects/                    # gitignored — runtime output of builds
 ```
+
+## Stable external interface
+
+This project is meant to be driven from the outside (e.g. by NeoClaw or any other observer). The contract is intentionally minimal and language-agnostic:
+
+- **Trigger**: shell out to `harness-runner plan ...` / `harness-runner generate ...`
+- **Observe progress**: read `projects/<name>/claude-progress.txt` and `git -C projects/<name> log`
+- **Inspect features**: read `projects/<name>/feature_list.json`
+
+No shared library / no in-process integration is required.
 
 ## Roadmap
 
 - **Step 1 (this repo, today)**: Planner + Generator, manual review between shifts.
-- **Step 2**: Add Evaluator agent with Playwright MCP. Sprint-contract handoffs.
+- **Step 2**: Add Evaluator agent with [Playwright MCP](./BACKLOG.md). Sprint-contract handoffs.
 - **Step 3**: Context-anxiety / shift-timeout detection and reset semantics.
-- **Step 4**: Integrate as an `OrchestratorAgent` into [NeoClaw](https://github.com/qiaojiacheng/neoclaw) so builds can be triggered and monitored from chat.
 
 ## License
 
