@@ -2,6 +2,30 @@
 
 Deferred items, in rough priority order. Move out of this file into an actual implementation when picked up.
 
+## Backend: `anthropic_api` — direct Messages API
+
+**Why**: From 2026-06-15, `claude -p` (the only backend we currently have) drains a separate, capped monthly credit pool on Anthropic subscriptions, metered at full API rates. For heavy or production usage the subscription path stops making sense — at that point we want a backend that talks directly to the Anthropic Messages API with our own API key, bypassing the subscription entirely (same rates, no $20 minimum, no monthly cap to worry about).
+
+**Implementation outline** (`src/harness_runner/backends/anthropic_api.py`):
+
+- Use the official `anthropic` Python SDK
+- Read `ANTHROPIC_API_KEY` from env
+- Implement a minimal **tool-use loop** that matches what Claude Code provides natively:
+  - `Read`, `Write`, `Edit`, `Glob`, `Grep` — file ops scoped to `cwd`
+  - `Bash` — subprocess with timeout
+  - `AskUserQuestion` — not needed for autonomous mode
+- Stream `message_start` / `content_block_delta` / `tool_use` events through the same `on_event` channel as `claude_cli`
+- Return `RunResult` with `cost_usd` computed from input/output token counts × Sonnet rate
+- Register in `backends/__init__.py:_REGISTRY` as `"anthropic_api"`
+
+**Estimate**: 500–800 lines including tool implementations. Half a day of focused work. Most of the complexity is the Read/Write/Edit/Bash tool implementations that Claude Code gives us for free — borrow design from any open-source agent harness (smolagents, OpenHands' codeact tool, etc.) but write our own.
+
+**When to do it**: trigger is "the first month our `claude_cli` usage costs more than the Anthropic API equivalent would have". Until then, `claude_cli` is operationally simpler.
+
+## Backend: `codex_cli` — hedge against Anthropic policy shifts
+
+Lightweight wrapper around OpenAI's Codex CLI (open-source). Useful as a sanity-check that our harness pattern isn't Claude-specific. Likely 100–200 lines.
+
 ## MCP — Playwright
 
 **Status**: deferred until Step 2 (Evaluator).

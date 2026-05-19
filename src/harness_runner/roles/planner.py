@@ -3,8 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ..claude import run_claude
-from ..paths import count_features, format_event, format_progress, projects_dir, prompts_dir
+from ..backends import get_backend
+from ..paths import count_features, format_progress, projects_dir, prompts_dir
 
 
 def plan(project_name: str) -> None:
@@ -38,13 +38,17 @@ def plan(project_name: str) -> None:
         "Do not write application code — that is the next agent's job."
     )
 
-    print(f"[planner] project={project_name} cwd={project_dir}", file=sys.stderr)
+    backend = get_backend()
+    print(
+        f"[planner] project={project_name} cwd={project_dir} backend={backend.name}",
+        file=sys.stderr,
+    )
 
-    result = run_claude(
+    result = backend.run(
         cwd=str(project_dir),
         prompt=user_prompt,
         system_prompt_append=system_prompt,
-        on_event=lambda e: print(format_event(e), file=sys.stderr),
+        on_event=lambda e: print(backend.format_event(e), file=sys.stderr),
     )
 
     try:

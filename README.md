@@ -94,16 +94,48 @@ src/
     __init__.py
     __main__.py              # `python -m harness_runner` entry
     cli.py                   # argv parsing
-    claude.py                # claude CLI subprocess wrapper (stream-json events)
-    paths.py                 # repo-relative paths + event formatter + count_features
-    scaffold.py              # `init` action (no Claude involved)
+    paths.py                 # repo-relative paths + count_features + format_progress
+    scaffold.py              # `init` action (no LLM involved)
     run.py                   # `run` action: auto-detect planner vs generator
+    backends/                # pluggable LLM backends
+      __init__.py            #   get_backend() factory + HARNESS_BACKEND env var
+      base.py                #   Backend protocol + RunResult dataclass
+      claude_cli.py          #   default: `claude -p` subprocess + stream-json parser
     roles/
       __init__.py
       planner.py
       generator.py
 projects/                    # gitignored — runtime output of builds
 ```
+
+## Backend selection
+
+The LLM call site is abstracted behind a `Backend` protocol so the harness can
+swap underlying integrations without touching role/orchestration code.
+
+Available backends:
+- **`claude_cli`** (default) — `claude -p` subprocess. Uses your local Claude
+  Code CLI for auth and model resolution.
+
+Planned (see [BACKLOG](./BACKLOG.md)):
+- `anthropic_api` — direct Anthropic Messages API, bypassing the Claude Code
+  subscription credit pool
+- `codex_cli` — OpenAI Codex CLI
+- `gemini_cli` — Google Gemini CLI
+
+Select via environment variable:
+
+```bash
+HARNESS_BACKEND=claude_cli harness-runner run mini-hex
+```
+
+**Heads-up on costs (effective 2026-06-15)**: Anthropic moves `claude -p`,
+Claude Agent SDK, and related programmatic usage onto a separate monthly credit
+pool, metered at full API rates. Pro = $20, Max 5x = $100, Max 20x = $200,
+Team Premium = $100 per seat. Credit must be claimed (Anthropic emails on
+June 8). No rollover. For heavy usage, the `anthropic_api` backend (when
+implemented) will let you bypass the subscription entirely and pay API rates
+pay-as-you-go.
 
 ## Stable external interface
 
