@@ -24,9 +24,26 @@ A flat JSON array. Each entry:
     "Concrete verification step a person (or Playwright) can execute",
     "..."
   ],
-  "passes": false
+  "passes": false,
+  "is_smoke": false
 }
 ```
+
+### `is_smoke` — the regression-check set
+
+Mark **3 to 5** of the most critical features (the ones that, if broken, mean
+the app is fundamentally non-functional) with `is_smoke: true`. Examples:
+the user can open the app and see the home page; the user can save and reload
+their work; the primary "do the main thing" path completes end-to-end.
+
+The Generator reads this field at the start of every shift and re-verifies
+those smoke features before doing new work. **Without smoke flags the
+Generator's regression check degrades to "pick something at random",
+which means broken core flows can survive shifts unnoticed.**
+
+Most features have `is_smoke: false` (or omit the field). Do NOT mark more
+than 5 — smoke is meant to be a small fast-running core set, not the whole
+test suite.
 
 ### Categories — only two
 

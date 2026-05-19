@@ -1,10 +1,8 @@
-import os
 import shutil
-import subprocess
 import sys
-from pathlib import Path
 from typing import Optional
 
+from .git_util import git_commit_all, git_init
 from .paths import projects_dir, templates_dir
 
 
@@ -32,24 +30,9 @@ def init(project_name: str, brief: Optional[str] = None) -> None:
         template = templates_dir() / "app_spec.template.md"
         shutil.copyfile(template, spec_target)
 
-    _run_git(["init", "-q"], cwd=project_dir)
-    _run_git(["add", "-A"], cwd=project_dir)
-    _run_git(
-        ["commit", "-q", "-m", "harness: project scaffold (app_spec.md)"],
-        cwd=project_dir,
-    )
+    git_init(project_dir)
+    git_commit_all(project_dir, "harness: project scaffold (app_spec.md)")
 
     print(f"[init] created {project_dir}", file=sys.stderr)
     print(f"[init] edit {spec_target} then run:", file=sys.stderr)
     print(f"         harness-runner run {project_name}", file=sys.stderr)
-
-
-def _run_git(args: list[str], *, cwd: Path) -> None:
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "harness-runner",
-        "GIT_AUTHOR_EMAIL": "harness@local",
-        "GIT_COMMITTER_NAME": "harness-runner",
-        "GIT_COMMITTER_EMAIL": "harness@local",
-    }
-    subprocess.run(["git", *args], cwd=cwd, env=env, check=True)

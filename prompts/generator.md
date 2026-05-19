@@ -11,11 +11,13 @@ Run these in order before doing ANY other work. Do not skip steps.
 5. `git log --oneline -20` — see recent commits
 6. If `init.sh` exists and the dev server is not already running, execute `bash init.sh`
 7. **Boot sanity check**: hit the health endpoint or open the home page and verify it loads. If broken → see "When the base is broken".
-8. **Regression check (MANDATORY)**: pick 1–2 features marked `passes: true` that exercise the app's core flows (e.g. for a chat app: log in → send message → see reply). Verify they still work end-to-end. **If any fail**:
+8. **Regression check (MANDATORY)**: in `feature_list.json`, find all features where **both** `is_smoke: true` AND `passes: true`. Verify each one still works end-to-end (run the steps; for UI features open a browser if available, otherwise hit the relevant endpoints). **If any fail**:
    - Flip those features' `passes` back to `false` in `feature_list.json`
    - **Fixing the regression IS your shift.** Do not start a new feature.
    - Commit as `fix: regression in <feature ids>` and log the root cause in the shift entry
-   - Why this matters: previous shifts may have introduced regressions while marking themselves successful. The first thing a fresh shift does is sniff for those. Skipping this step is how the test suite slowly turns into lies.
+   - Why this matters: previous shifts may have introduced regressions while marking themselves successful. The first thing a fresh shift does is sniff for those. The Planner specifically tagged smoke features so this check is deterministic — not "pick something that feels core".
+
+   If no feature has `is_smoke: true` yet (e.g. very early in the build), fall back to picking 1–2 high-priority `passes: true` features that exercise the app's main path. But this should be rare — the Planner is supposed to tag 3–5 smoke features up front.
 
 If any step fails, stop and write the failure to `claude-progress.txt`. Do not attempt new features on a broken base.
 

@@ -19,7 +19,7 @@ import os
 from typing import Optional
 
 from .base import Backend, RunResult
-from .claude_cli import ClaudeCLIBackend
+from .claude_cli import ClaudeCLIBackend, ShiftTimeoutError
 
 
 _REGISTRY = {
@@ -47,4 +47,4 @@ def get_backend(name: Optional[str] = None) -> Backend:
     return _REGISTRY[chosen]()
 
 
-__all__ = ["Backend", "RunResult", "get_backend"]
+__all__ = ["Backend", "RunResult", "ShiftTimeoutError", "get_backend"]

@@ -1,8 +1,25 @@
 import json
+import os
 import subprocess
+import sys
+import threading
+import time
 from typing import Any, Callable, Optional
 
 from .base import RunResult
+
+
+# Configurable via env. Defaults intentionally generous; tighten for cheap shifts.
+SHIFT_TIMEOUT_SEC = int(os.environ.get("HARNESS_SHIFT_TIMEOUT_SEC", "1800"))  # 30 min
+IDLE_TIMEOUT_SEC = int(os.environ.get("HARNESS_IDLE_TIMEOUT_SEC", "300"))    # 5 min
+
+
+class ShiftTimeoutError(RuntimeError):
+    """Raised when the claude subprocess hits the total or idle timeout.
+
+    Callers (run --loop, generate-loop) should treat this as a transient
+    failure: retry with a fresh shift rather than aborting the whole run.
+    """
 
 
 class ClaudeCLIBackend:
@@ -11,8 +28,17 @@ class ClaudeCLIBackend:
     Uses the locally-installed Claude Code CLI for auth and model
     resolution. **From 2026-06-15** this counts as "programmatic usage"
     on Anthropic subscriptions and drains a separate monthly credit pool
-    at full API rates (see BACKLOG.md). For heavy usage, consider
-    switching to a direct-API backend when one becomes available.
+    at full API rates (see BACKLOG.md).
+
+    Robustness:
+      - `stderr` is drained in a background thread to avoid the classic
+        64KB pipe-buffer deadlock when claude logs more than the pipe
+        can hold while we're busy reading `stdout`.
+      - A watchdog thread enforces two timeouts:
+        * total shift wall-clock (`HARNESS_SHIFT_TIMEOUT_SEC`, default 30 min)
+        * idle / no-output  (`HARNESS_IDLE_TIMEOUT_SEC`, default 5 min)
+        On either trip: SIGTERM, 5s grace, SIGKILL; caller gets a
+        `ShiftTimeoutError`.
     """
 
     name = "claude_cli"
@@ -49,30 +75,97 @@ class ClaudeCLIBackend:
             bufsize=1,
         )
 
+        # ── stderr drain (prevents 64KB pipe-buffer deadlock) ────────
+        stderr_lines: list[str] = []
+
+        def _drain_stderr() -> None:
+            if proc.stderr is None:
+                return
+            try:
+                for line in proc.stderr:
+                    stderr_lines.append(line)
+            except (OSError, ValueError):
+                # Pipe closed during process teardown — fine.
+                pass
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
+        # ── watchdog (total + idle timeout) ──────────────────────────
+        last_event_at = [time.monotonic()]
+        deadline = last_event_at[0] + SHIFT_TIMEOUT_SEC
+        watchdog_done = threading.Event()
+        timeout_reason: list[str] = []  # populated by watchdog if it kills
+
+        def _watchdog() -> None:
+            while not watchdog_done.is_set():
+                now = time.monotonic()
+                if now >= deadline:
+                    timeout_reason.append(f"total shift timeout ({SHIFT_TIMEOUT_SEC}s)")
+                    break
+                if now - last_event_at[0] >= IDLE_TIMEOUT_SEC:
+                    timeout_reason.append(
+                        f"idle for {IDLE_TIMEOUT_SEC}s (no stdout)"
+                    )
+                    break
+                # Poll every 5s — long enough not to burn CPU, short enough to
+                # react within ~5s of crossing a threshold.
+                watchdog_done.wait(timeout=5)
+
+            if timeout_reason:
+                # Trip: terminate the subprocess.
+                try:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                except (OSError, ProcessLookupError):
+                    pass
+
+        watchdog_thread = threading.Thread(target=_watchdog, daemon=True)
+        watchdog_thread.start()
+
+        # ── main stdout reader ───────────────────────────────────────
         final: Optional[RunResult] = None
         assert proc.stdout is not None
-        for line in proc.stdout:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if on_event is not None:
-                on_event(event)
-            if event.get("type") == "result":
-                sid = str(event.get("session_id") or "") or None
-                final = RunResult(
-                    result=str(event.get("result") or ""),
-                    session_id=sid,
-                    cost_usd=float(event.get("total_cost_usd") or 0),
-                    duration_ms=int(event.get("duration_ms") or 0),
-                    num_turns=int(event.get("num_turns") or 0),
-                )
+        try:
+            for line in proc.stdout:
+                last_event_at[0] = time.monotonic()
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if on_event is not None:
+                    on_event(event)
+                if event.get("type") == "result":
+                    sid = str(event.get("session_id") or "") or None
+                    final = RunResult(
+                        result=str(event.get("result") or ""),
+                        session_id=sid,
+                        cost_usd=float(event.get("total_cost_usd") or 0),
+                        duration_ms=int(event.get("duration_ms") or 0),
+                        num_turns=int(event.get("num_turns") or 0),
+                    )
+        finally:
+            # Stop watchdog regardless of how we exited the loop.
+            watchdog_done.set()
 
         exit_code = proc.wait()
-        stderr_text = proc.stderr.read() if proc.stderr is not None else ""
+        stderr_thread.join(timeout=2)
+        stderr_text = "".join(stderr_lines)
+
+        # Timeout takes precedence: even if exit_code looks innocent
+        # (terminated), the watchdog's reason is the real story.
+        if timeout_reason:
+            raise ShiftTimeoutError(
+                f"claude killed by watchdog: {timeout_reason[0]}\n"
+                f"partial stderr:\n{stderr_text[-2000:]}"
+            )
+
         if exit_code != 0:
             raise RuntimeError(f"claude exited {exit_code}\nstderr:\n{stderr_text}")
         if final is None:

@@ -1,10 +1,11 @@
-import os
-import subprocess
 import sys
-from pathlib import Path
+import time
 
-from ..backends import get_backend
+from ..backends import ShiftTimeoutError, get_backend
+from ..git_util import git_commit_all
+from ..history import record_shift
 from ..paths import count_features, format_progress, projects_dir, prompts_dir
+from ..validate import format_errors, validate_planner_output
 
 
 def plan(project_name: str) -> None:
@@ -44,32 +45,79 @@ def plan(project_name: str) -> None:
         file=sys.stderr,
     )
 
-    result = backend.run(
-        cwd=str(project_dir),
-        prompt=user_prompt,
-        system_prompt_append=system_prompt,
-        on_event=lambda e: print(backend.format_event(e), file=sys.stderr),
-    )
-
+    t0 = time.monotonic()
     try:
-        _run_git(["add", "-A"], cwd=project_dir)
-        _run_git(["commit", "-q", "-m", "harness: planner output"], cwd=project_dir)
-    except subprocess.CalledProcessError:
-        # No changes to commit — planner produced nothing.
-        pass
+        result = backend.run(
+            cwd=str(project_dir),
+            prompt=user_prompt,
+            system_prompt_append=system_prompt,
+            on_event=lambda e: print(backend.format_event(e), file=sys.stderr),
+        )
+    except ShiftTimeoutError as e:
+        record_shift(
+            project_dir,
+            role="planner",
+            passing_before=0,
+            passing_after=0,
+            total=0,
+            outcome="timeout",
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            note=str(e).splitlines()[0],
+        )
+        raise
+    except Exception as e:
+        record_shift(
+            project_dir,
+            role="planner",
+            passing_before=0,
+            passing_after=0,
+            total=0,
+            outcome="error",
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            note=str(e).splitlines()[0],
+        )
+        raise
+
+    # ── Validate planner output BEFORE committing ────────────────
+    errors = validate_planner_output(project_dir)
+    if errors:
+        record_shift(
+            project_dir,
+            role="planner",
+            passing_before=0,
+            passing_after=0,
+            total=0,
+            outcome="validation_failed",
+            session_id=result.session_id,
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            note=f"{len(errors)} validation error(s)",
+        )
+        raise RuntimeError(
+            "Planner produced invalid output. The plan has NOT been committed.\n"
+            "Inspect the working tree to see what was generated, then either\n"
+            "fix it by hand and `git add -A && git commit`, or remove the\n"
+            "project directory and re-plan.\n\n"
+            f"Errors:\n{format_errors(errors)}"
+        )
+
+    # Commit the validated plan.
+    git_commit_all(project_dir, "harness: planner output")
 
     print("\n[planner] done.", file=sys.stderr)
     passing, total = count_features(project_dir)
     print(format_progress(passing, total), file=sys.stderr)
+
+    record_shift(
+        project_dir,
+        role="planner",
+        passing_before=0,
+        passing_after=passing,
+        total=total,
+        outcome="ok",
+        session_id=result.session_id,
+        cost_usd=result.cost_usd,
+        duration_ms=result.duration_ms,
+    )
+
     print(result.result)
-
-
-def _run_git(args: list[str], *, cwd: Path) -> None:
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "harness-runner",
-        "GIT_AUTHOR_EMAIL": "harness@local",
-        "GIT_COMMITTER_NAME": "harness-runner",
-        "GIT_COMMITTER_EMAIL": "harness@local",
-    }
-    subprocess.run(["git", *args], cwd=cwd, env=env, check=True)

@@ -1,5 +1,6 @@
 import sys
 
+from .retry import generate_with_retry
 from .roles.generator import generate
 from .roles.planner import plan
 from .run import run
@@ -110,9 +111,12 @@ def main() -> None:
         if n <= 0:
             print(f"invalid shift count: {n}", file=sys.stderr)
             sys.exit(1)
+        successes = 0
         for i in range(1, n + 1):
             print(f"\n========== Shift {i}/{n} ==========\n", file=sys.stderr)
-            generate(project_name)
+            if generate_with_retry(project_name, generate):
+                successes += 1
+        print(f"\n[loop] {successes}/{n} shifts succeeded", file=sys.stderr)
 
     else:
         _usage()
