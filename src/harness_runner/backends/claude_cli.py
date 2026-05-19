@@ -143,12 +143,23 @@ class ClaudeCLIBackend:
                     on_event(event)
                 if event.get("type") == "result":
                     sid = str(event.get("session_id") or "") or None
+                    usage = event.get("usage") or {}
+                    # Total input includes cache hits — same convention Anthropic
+                    # bills on and that NeoClaw uses.
+                    total_input = (
+                        int(usage.get("input_tokens") or 0)
+                        + int(usage.get("cache_creation_input_tokens") or 0)
+                        + int(usage.get("cache_read_input_tokens") or 0)
+                    )
                     final = RunResult(
                         result=str(event.get("result") or ""),
                         session_id=sid,
                         cost_usd=float(event.get("total_cost_usd") or 0),
                         duration_ms=int(event.get("duration_ms") or 0),
                         num_turns=int(event.get("num_turns") or 0),
+                        input_tokens=total_input if usage else None,
+                        output_tokens=int(usage.get("output_tokens") or 0) if usage else None,
+                        model=str(event.get("model") or "") or None,
                     )
         finally:
             # Stop watchdog regardless of how we exited the loop.

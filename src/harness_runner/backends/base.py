@@ -6,8 +6,9 @@ from typing import Any, Callable, Optional, Protocol, runtime_checkable
 class RunResult:
     """Backend-agnostic result of one agent invocation.
 
-    `cost_usd`, `session_id`, `duration_ms`, `num_turns` may be `None`
-    if a backend doesn't report them.
+    All numeric fields may be `None` if a backend doesn't report them.
+    `input_tokens` is the *total* prompt-side tokens (base + cache
+    creation + cache read), matching how Anthropic bills.
     """
 
     result: str
@@ -15,6 +16,9 @@ class RunResult:
     cost_usd: Optional[float] = None
     duration_ms: Optional[int] = None
     num_turns: Optional[int] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    model: Optional[str] = None
 
 
 @runtime_checkable

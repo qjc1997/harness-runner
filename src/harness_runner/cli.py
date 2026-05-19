@@ -1,5 +1,7 @@
 import sys
 
+from .budget import BudgetExceededError, assert_under_budget
+from .paths import projects_dir
 from .retry import generate_with_retry
 from .roles.generator import generate
 from .roles.planner import plan
@@ -111,8 +113,17 @@ def main() -> None:
         if n <= 0:
             print(f"invalid shift count: {n}", file=sys.stderr)
             sys.exit(1)
+        project_dir = projects_dir() / project_name
         successes = 0
         for i in range(1, n + 1):
+            try:
+                assert_under_budget(project_dir)
+            except BudgetExceededError as e:
+                print(
+                    f"\n[loop] budget exceeded — stopping at shift {i}/{n}: {e}",
+                    file=sys.stderr,
+                )
+                break
             print(f"\n========== Shift {i}/{n} ==========\n", file=sys.stderr)
             if generate_with_retry(project_name, generate):
                 successes += 1

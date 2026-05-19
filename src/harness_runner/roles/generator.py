@@ -83,6 +83,9 @@ def generate(project_name: str) -> None:
         session_id=result.session_id,
         cost_usd=result.cost_usd,
         duration_ms=result.duration_ms,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        model=result.model,
     )
 
     print(result.result)

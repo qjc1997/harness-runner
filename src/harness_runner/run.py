@@ -1,5 +1,6 @@
 import sys
 
+from .budget import BudgetExceededError, assert_under_budget
 from .paths import projects_dir
 from .retry import generate_with_retry
 from .roles.generator import generate
@@ -11,14 +12,11 @@ def run(project_name: str, loop: int = 1) -> None:
 
     - If `projects/<name>/feature_list.json` is missing → run Planner.
     - Then run Generator `loop` times, each with retry-on-transient-failure.
+    - Before each generator shift, check HARNESS_BUDGET_USD (if set)
+      against cumulative project cost; stop early if breached.
 
     Errors out if the project directory or `app_spec.md` is missing
     (run `harness-runner init <name>` first).
-
-    Planner failure is NOT retried — the spec is the input that needs
-    human judgment to fix. Generator failures retry up to 3 times each;
-    after exhausting retries on one shift, the loop continues to the
-    next shift (a fresh agent may handle what got the previous one stuck).
     """
     project_dir = projects_dir() / project_name
     if not project_dir.exists():
@@ -38,6 +36,14 @@ def run(project_name: str, loop: int = 1) -> None:
 
     successes = 0
     for i in range(1, loop + 1):
+        try:
+            assert_under_budget(project_dir)
+        except BudgetExceededError as e:
+            print(
+                f"\n[run] budget exceeded — stopping at shift {i}/{loop}: {e}",
+                file=sys.stderr,
+            )
+            break
         print(f"\n========== Generator shift {i}/{loop} ==========\n", file=sys.stderr)
         if generate_with_retry(project_name, generate):
             successes += 1
