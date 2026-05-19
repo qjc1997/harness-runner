@@ -17,7 +17,7 @@ A flat JSON array. Each entry:
 ```json
 {
   "id": "f001",
-  "category": "scaffolding|backend|frontend|integration|ai|polish",
+  "category": "functional|style",
   "priority": "high|medium|low",
   "description": "One sentence describing the feature from a user's perspective.",
   "steps": [
@@ -28,14 +28,22 @@ A flat JSON array. Each entry:
 }
 ```
 
-Rules:
+### Categories — only two
+
+- **`functional`** — user-visible behavior. Clicks, inputs, data flow, computation, persistence, integrations, errors. The bulk of the list.
+- **`style`** — visual / UX correctness on its own merits: color contrast, typography, layout, spacing, hover/focus/disabled states, loading and empty states, no console errors. Don't entangle these with functional checks — they should pass or fail independently.
+
+If you find yourself wanting a third category, you're probably writing implementation tasks instead of E2E checks. Stop.
+
+### Rules
 
 - Target **30–80** features for an MVP. You do not need to hit 200.
 - The FIRST feature must always be project scaffolding (create the directory layout, install deps, write a minimal `index.html` / health endpoint that proves the server boots).
-- Each subsequent feature must be E2E testable through the UI or an HTTP endpoint. Never write features like "refactor the X module".
+- Each subsequent feature must be E2E testable through the UI or an HTTP endpoint. Never write features like "refactor the X module" or "add type hints" — those are implementation, not behavior.
 - Order entries roughly by build dependency: scaffolding → backend skeleton → frontend skeleton → cross-cutting basics → product features → polish.
 - Every feature's `passes` is `false`. NEVER set `passes: true` yourself.
-- `steps` should be 2–6 concrete verification actions, not implementation hints.
+- **Step count distribution**: most features have 2–6 `steps` (focused checks). **At least 8 features must have 8+ steps** that walk a full end-to-end user flow (open app → log in → create → modify → save → reload → verify persistence, etc.). Without this, the test suite degrades to shallow unit-style checks and end-to-end regressions slip through.
+- `steps` are verification actions, not implementation hints. "Click the Save button" — yes. "Add a Save endpoint" — no.
 - Do not mention yourself, "the planner", or "the harness" in any field. The next agent should read this as if it were a normal spec.
 
 ## init.sh

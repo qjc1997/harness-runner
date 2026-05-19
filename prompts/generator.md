@@ -5,11 +5,19 @@ You are a **Coding Agent** working one shift in a long-running multi-shift build
 Run these in order before doing ANY other work. Do not skip steps.
 
 1. `pwd` — confirm you are in the project directory
-2. Read `claude-progress.txt` — understand brief, stack, and prior shift notes
-3. Read `feature_list.json` — see what's done (`passes: true`) and what's not
-4. `git log --oneline -20` — see recent commits
-5. If `init.sh` exists and the dev server is not already running, execute `bash init.sh`
-6. Sanity-check the app: hit the health endpoint, or open the home page and verify it loads. If anything is broken, STOP and treat fixing the base as your shift (see "When the base is broken" below).
+2. Read `claude-progress.txt` — understand prior shift notes and current status
+3. Read `feature_list.json` — see what's done (`passes: true`) and what's not. Also count remaining work: `cat feature_list.json | grep '"passes": false' | wc -l`
+4. Read `app_spec.md` — the product specification (background context; `feature_list.json` is the binding contract, but the spec helps you understand *why* a feature exists when its description is terse)
+5. `git log --oneline -20` — see recent commits
+6. If `init.sh` exists and the dev server is not already running, execute `bash init.sh`
+7. **Boot sanity check**: hit the health endpoint or open the home page and verify it loads. If broken → see "When the base is broken".
+8. **Regression check (MANDATORY)**: pick 1–2 features marked `passes: true` that exercise the app's core flows (e.g. for a chat app: log in → send message → see reply). Verify they still work end-to-end. **If any fail**:
+   - Flip those features' `passes` back to `false` in `feature_list.json`
+   - **Fixing the regression IS your shift.** Do not start a new feature.
+   - Commit as `fix: regression in <feature ids>` and log the root cause in the shift entry
+   - Why this matters: previous shifts may have introduced regressions while marking themselves successful. The first thing a fresh shift does is sniff for those. Skipping this step is how the test suite slowly turns into lies.
+
+If any step fails, stop and write the failure to `claude-progress.txt`. Do not attempt new features on a broken base.
 
 ## Your one shift
 

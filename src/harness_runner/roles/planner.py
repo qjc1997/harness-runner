@@ -4,29 +4,38 @@ import sys
 from pathlib import Path
 
 from ..claude import run_claude
-from ..paths import format_event, projects_dir, prompts_dir
+from ..paths import count_features, format_event, format_progress, projects_dir, prompts_dir
 
 
-def plan(project_name: str, brief: str) -> None:
+def plan(project_name: str) -> None:
     project_dir = projects_dir() / project_name
 
-    if project_dir.exists():
+    if not project_dir.exists():
         raise RuntimeError(
-            f"project already exists: {project_dir}\n"
-            "remove it first if you want to re-plan."
+            f"project not found: {project_dir}\n"
+            f'run "harness-runner init {project_name}" first.'
         )
-    project_dir.mkdir(parents=True)
 
-    _run_git(["init", "-q"], cwd=project_dir)
-    _run_git(
-        ["commit", "-q", "--allow-empty", "-m", "harness: project scaffold"],
-        cwd=project_dir,
-    )
+    spec_file = project_dir / "app_spec.md"
+    if not spec_file.exists():
+        raise RuntimeError(
+            f"app_spec.md missing in {project_dir}\n"
+            f'run "harness-runner init {project_name}" to scaffold it.'
+        )
 
+    if (project_dir / "feature_list.json").exists():
+        raise RuntimeError(
+            f"feature_list.json already exists in {project_dir}\n"
+            "this project has already been planned. delete the file to re-plan,\n"
+            "or run `harness-runner generate` to continue building."
+        )
+
+    spec = spec_file.read_text(encoding="utf-8")
     system_prompt = (prompts_dir() / "planner.md").read_text(encoding="utf-8")
     user_prompt = (
-        f"# Product brief\n\n{brief}\n\n"
-        "Produce feature_list.json, init.sh, and claude-progress.txt now."
+        f"# Application Specification (read from {spec_file.name})\n\n{spec}\n\n"
+        "Produce feature_list.json, init.sh, and claude-progress.txt now. "
+        "Do not write application code — that is the next agent's job."
     )
 
     print(f"[planner] project={project_name} cwd={project_dir}", file=sys.stderr)
@@ -42,10 +51,12 @@ def plan(project_name: str, brief: str) -> None:
         _run_git(["add", "-A"], cwd=project_dir)
         _run_git(["commit", "-q", "-m", "harness: planner output"], cwd=project_dir)
     except subprocess.CalledProcessError:
-        # No changes to commit — planner produced nothing. The caller will see this from the result.
+        # No changes to commit — planner produced nothing.
         pass
 
     print("\n[planner] done.", file=sys.stderr)
+    passing, total = count_features(project_dir)
+    print(format_progress(passing, total), file=sys.stderr)
     print(result.result)
 
 

@@ -10,18 +10,20 @@ enough for unsupervised Generator shifts to make stable progress.
 
 ## How it works
 
-Given a one-paragraph product brief, the harness runs two roles in turn:
+The flow has three steps and two roles:
 
-1. **Planner** (one shot)
-   Produces three artifacts in the project directory:
+1. **`init` — scaffold a project** (no Claude involved)
+   Creates `projects/<name>/app_spec.md` from a template, plus a git repo with an initial commit. You then edit the spec to describe what you want built (or pass a one-line brief on the CLI to skip the template).
+
+2. **Planner** (one Claude shift)
+   Reads `app_spec.md` and produces three artifacts:
    - `feature_list.json` — flat array of E2E-testable features, each with `passes: false`
    - `init.sh` — dev-environment bootstrap (start servers, write `.dev-pids`)
    - `claude-progress.txt` — running progress log
-   Initializes a git repo and makes the first commit.
 
-2. **Generator** (one shift per invocation)
-   A fresh Claude session that:
-   - follows a mandatory startup protocol (`pwd`, read progress, read features, `git log`, `init.sh`, sanity-check the app)
+3. **Generator** (many Claude shifts)
+   A fresh Claude session per invocation that:
+   - follows a mandatory startup protocol (read progress, read features, read `app_spec.md`, `git log`, `init.sh`, boot check, **regression check on already-passing features**)
    - picks **exactly one** feature with `passes:false`
    - implements, verifies, flips that one feature's `passes` flag, commits
    - appends a 3–5 line summary to `claude-progress.txt`
@@ -48,14 +50,31 @@ You can also run without install: `python -m harness_runner ...` from the repo r
 
 ## Use
 
+### Quick mode
+
 ```bash
-# 1. Plan a project from a brief
-harness-runner plan mini-hex "A minimal Hex-like data notebook. Cells for Python (shared kernel), SQL (DuckDB), and AI generation that turns natural language into code. React+Vite frontend, FastAPI backend."
+harness-runner init mini-hex "A minimal Hex-like data notebook. Cells for Python (shared Jupyter kernel), SQL (DuckDB), and AI generation. React+Vite frontend, FastAPI backend."
+harness-runner run mini-hex --loop 5
+```
 
-# 2. Run one generator shift
+`run` auto-detects whether the project has been planned yet:
+- no `feature_list.json` → runs Planner first, then a Generator shift (1 by default; more with `--loop N`)
+- `feature_list.json` exists → runs N Generator shifts
+
+### Step-by-step (more control)
+
+```bash
+# Scaffold and edit the spec by hand
+harness-runner init mini-hex
+$EDITOR projects/mini-hex/app_spec.md
+
+# Plan and generate explicitly
+harness-runner run mini-hex            # plan + 1 shift
+harness-runner run mini-hex --loop 3   # 3 more shifts
+
+# Or use the lower-level commands directly
+harness-runner plan mini-hex
 harness-runner generate mini-hex
-
-# 3. Run N shifts back-to-back
 harness-runner generate-loop mini-hex 5
 ```
 
@@ -68,13 +87,17 @@ each project has its own internal git history that survives across shifts).
 prompts/
   planner.md                 # planner system prompt
   generator.md               # generator system prompt
+templates/
+  app_spec.template.md       # copied into projects/<name>/app_spec.md by `init`
 src/
   harness_runner/
     __init__.py
     __main__.py              # `python -m harness_runner` entry
     cli.py                   # argv parsing
     claude.py                # claude CLI subprocess wrapper (stream-json events)
-    paths.py                 # repo-relative paths + event formatter
+    paths.py                 # repo-relative paths + event formatter + count_features
+    scaffold.py              # `init` action (no Claude involved)
+    run.py                   # `run` action: auto-detect planner vs generator
     roles/
       __init__.py
       planner.py
@@ -86,9 +109,9 @@ projects/                    # gitignored — runtime output of builds
 
 This project is meant to be driven from the outside (e.g. by NeoClaw or any other observer). The contract is intentionally minimal and language-agnostic:
 
-- **Trigger**: shell out to `harness-runner plan ...` / `harness-runner generate ...`
+- **Trigger**: shell out to `harness-runner init ...` / `harness-runner run ...`
 - **Observe progress**: read `projects/<name>/claude-progress.txt` and `git -C projects/<name> log`
-- **Inspect features**: read `projects/<name>/feature_list.json`
+- **Inspect features**: read `projects/<name>/feature_list.json` (each shift prints `[progress] X/N features passing (Y%)` to stderr)
 
 No shared library / no in-process integration is required.
 
