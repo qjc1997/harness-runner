@@ -1,0 +1,7 @@
+node_modules/
+projects/
+*.log
+.DS_Store
+.dev-pids
+.env
+.env.local
