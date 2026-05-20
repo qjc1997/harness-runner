@@ -21,43 +21,71 @@ Run these in order before doing ANY other work. Do not skip steps.
 
 If any step fails, stop and write the failure to `claude-progress.txt`. Do not attempt new features on a broken base.
 
-## Your one shift
+## Your shift
 
 After the startup protocol succeeds:
 
-1. Pick **exactly one** feature with `passes: false`. Selection rules, in order:
-   - Highest `priority` ("high" beats "medium" beats "low")
-   - Among same priority, the one with no unsatisfied dependencies on other unfinished features
-   - Among ties, lowest `id`
+### 1. Declare your batch
 
-2. Implement it. Write tests where the feature's `steps` map naturally to a test.
+Pick **one or more related features** with `passes: false`. Walk the remaining work in priority order and choose a batch you can confidently implement AND verify within one session.
 
-3. Verify the feature manually against its `steps`. Use `curl` for HTTP, run the dev server and exercise the UI for frontend features, run pytest/playwright where appropriate.
+**Selection order**:
+- Highest `priority` first ("high" beats "medium" beats "low")
+- Within same priority, lowest `id`
+- Prefer features that have no unsatisfied dependencies on other unfinished features
 
-4. **Only when every step in the feature's `steps` array has been verified to pass**, edit `feature_list.json` and flip that one feature's `passes` from `false` to `true`. Touch no other entry. Preserve the file's JSON formatting.
+**What makes a good batch**:
+- The features touch the same file(s) or share a component, so doing them together is cheaper than separately
+- You can verify each feature independently against its own `steps`
+- The total work fits comfortably in one session (you won't run out of context mid-batch)
 
-5. Commit: `git add -A && git commit -m "feat: <id> <short description>"`.
+**What makes a bad batch**:
+- Features whose only relationship is "they're next in the list" — bundling them just means context-switching
+- More than ~5 features — you're probably over-claiming; trust your future self to do the rest
+- Anything you're not confident you can fully verify (not just implement) before the shift ends
 
-6. Append a shift-log entry to `claude-progress.txt`:
+**A batch of one is fine.** If you only see one obvious unit of work, pick one.
+
+**Write your declared batch as the FIRST line of your shift log** (see step 3 below), e.g.
+`Batch: f003, f004 — both touch the create-note form component`
+
+### 2. Implement, verify, and commit — one feature at a time
+
+For **each** feature in your batch, in order:
+
+1. Implement it
+2. Walk through its `steps` and verify they actually pass (curl for HTTP, dev server clicks / Playwright for UI, pytest as appropriate)
+3. **Only after verification**, flip that feature's `passes` from `false` to `true` in `feature_list.json`. Touch no other entry's fields.
+4. **Commit atomically**: `git add -A && git commit -m "feat: <id> <short description>"`. **One commit per feature**, even when you did the whole batch in one go. This preserves `git bisect`, `git blame`, and selective revert; the shift log can summarize, but git history must stay granular.
+
+If a feature turns out bigger than expected mid-implementation:
+- Stop cleanly at a sub-boundary
+- Leave that feature's `passes` as `false`
+- Commit any reusable progress as `wip: f<id> partial — <what's done>`
+- Append a NEW follow-up feature to the END of `feature_list.json` describing the remainder, then continue to the next batch member (or end the shift)
+
+### 3. Append shift log
+
+After all your in-batch features are committed, append to `claude-progress.txt`:
 
 ```
-### Shift YYYY-MM-DD HH:MM — <id>
-- Built: <one line>
-- Decisions: <only if non-obvious>
-- Watch out: <only if you noticed something the next shift should know>
+### Shift YYYY-MM-DD HH:MM
+- Batch: f003, f004 — <one-line rationale for grouping>
+- Built: <one line per completed feature, what was actually shipped>
+- Decisions: <non-obvious choices; omit if everything was straightforward>
+- Watch out: <anything the next shift should know about>
+- Skipped: <if you considered a feature for the batch but excluded it, name it and why>
 ```
 
 ## Hard rules
 
-- **NEVER** remove or edit any other entry in `feature_list.json`. You only flip the `passes` field of the one feature you completed.
-- **NEVER** set `passes: true` without actually verifying every step.
-- **NEVER** delete or edit existing tests. If a test is wrong, leave it and add a follow-up feature to the END of `feature_list.json` explaining the issue.
-- One feature per shift. If your feature turns out to be larger than expected:
-  - Stop at a clean sub-boundary
-  - Mark the feature complete only if a meaningful, user-visible subset of the `steps` actually passes
-  - Append a NEW feature entry to the end of `feature_list.json` for the remainder
+- **`feature_list.json` discipline**: only flip the `passes` field of features you actually completed and verified in this shift. Never touch any other entry's `description`, `steps`, `category`, `priority`, or `is_smoke`. Never delete features.
+- **No false positives**: never flip a feature's `passes` to `true` without walking its `steps` and watching them succeed.
+- **Existing tests are sacred**: never delete or edit existing tests. If a test is wrong, leave it and add a follow-up feature to the END of `feature_list.json` explaining the issue.
+- **Atomic commits**: one commit per feature. Even if features were done together in one batch session, each gets its own `feat: <id> ...` commit. Do NOT squash a batch into one commit.
+- **Stay in declared scope**: features you didn't declare in your batch (step 1) MUST be left with `passes: false` even if you happened to write related code while building your batch. If you find yourself wanting to flip a feature you didn't declare, that's a signal you over-claimed — log it in `Skipped` and let the next shift pick it up cleanly.
 - Commits go on the current branch. Do not create or switch branches.
-- Do not edit `init.sh` unless the change is required by the feature you're building.
+- Do not edit `init.sh` unless the change is required by a feature in your batch.
 
 ## When the base is broken
 
@@ -79,6 +107,6 @@ If `feature_list.json` has no `passes: false` entries left, write a single line 
 
 ## Output
 
-End with a one-sentence status line:
+End with a one-sentence status line, naming the features completed:
 
-`Shift complete: <id> done` — or — `Shift complete: base fix only` — or — `Shift complete: no work remaining`
+`Shift complete: f003, f004 done` — or — `Shift complete: base fix only` — or — `Shift complete: no work remaining`

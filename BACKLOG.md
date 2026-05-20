@@ -117,6 +117,27 @@ Currently both abort on the first exception (RuntimeError, claude non-zero exit,
 
 Anthropic's reference does this around `run_agent_session()`.
 
+## Generator one-shift boundary (long-term research)
+
+As model capability grows, the binding constraint on shift size shifts from "what fits in context" to "what Generator can mentally hold without losing track". The hardware ceiling (context window, now 1M for Opus 4.7) becomes self-set rather than externally enforced. Anthropic's original "exactly one feature per shift" prompt was written for Sonnet 4.5 limits; with Opus 4.7 we've already loosened it to "1+ related features per shift, atomic per-feature commits, scope declaration in shift log" (2026-05-20). But the **deeper question is unsolved**: how does Generator reliably know the upper bound of what it can complete in one session, when the constraint is no longer a hard wall?
+
+Open sub-problems to explore:
+
+- **Pre-shift scope contract**: Generator declares "I'll do f003, f004, f005" at shift start (already in current prompt as `Batch: ...` log line). Should we machine-parse that and treat exceeding it as a logged deviation event?
+- **Mid-shift retrospection**: at turn 30 of a long shift, can Generator self-evaluate "am I still on track for my declared batch, or have I lost the thread"? Anthropic's "context anxiety" research suggests models can detect this.
+- **Post-shift validation**: automated diff-vs-claim check — does `git log` since shift start show only the features declared in the batch, or did Generator silently expand scope?
+- **Thinking budget**: use Opus's interleaved thinking deliberately at shift start to plan batch scope BEFORE any file write. May reduce mid-shift overruns.
+- **Model self-introspection**: ask "given this feature list and current state, what's a comfortable batch for ONE shift?" as a separate planning call before code generation. Could even be a different (cheaper) model.
+
+Signals from `.harness_history.jsonl` we can already use now to spot trouble without new code:
+
+- per-shift cost variance creeping up (~$0.35 → ~$2+ would be a yellow flag)
+- regression check trip rate (most shifts should pass smoke; frequent fails = batches contain self-contradictions)
+- `passing_after - passing_before` ≫ size of declared batch in shift log = silent scope creep
+- input_tokens approaching 1M per shift = context ceiling getting close, time to shrink batch
+
+Track these informally first; formalize into prompt rules or auto-checks once we have empirical data from a few real runs.
+
 ## Open spec questions (carry into Step 2 planning)
 
 - **Trigger mode**: chat-triggered single build run vs. always-on background harness. Affects how NeoClaw's chat-side console hooks in.
