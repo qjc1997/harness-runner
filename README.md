@@ -8,6 +8,31 @@ This is **Step 1**: the minimum viable harness. Two roles, no Evaluator.
 The goal of Step 1 is to learn whether a Planner-produced feature list is granular
 enough for unsupervised Generator shifts to make stable progress.
 
+## Why I built this
+
+In late 2025 Anthropic published two articles on long-running coding agents — patterns for orchestrating LLMs across many context-windows to build complete applications. Their reference implementation ([`autonomous-coding`](https://github.com/anthropics/claude-quickstarts/tree/main/autonomous-coding)) is Python tied to the Claude Agent SDK, distributed under "Internal Anthropic use" license.
+
+This project is an independent take on the same patterns, with a different set of design decisions deliberately chosen for adversarial conditions the reference doesn't address:
+
+- **Pluggable LLM backend** — abstracted behind a `Backend` protocol so the same orchestration runs against `claude_cli`, direct Anthropic Messages API, OpenAI Codex CLI, or Gemini CLI without touching role-code. Particularly relevant given Anthropic's 2026-06-15 programmatic-billing change.
+- **Production-grade subprocess handling** — watchdog timeouts (total + idle), background stderr draining to defeat the 64KB pipe-buffer deadlock, structured retry-with-backoff for transient failures, soft budget cap.
+- **Schema-level validation** of Planner output before commit, with invariants on category, step distribution, and smoke-feature coverage. Bad plans cost one Planner shift, not twenty Generator shifts.
+- **Observable shift accounting** — per-project `.harness_history.jsonl` records cost / duration / tokens / passing-deltas per shift, machine-queryable without parsing markdown.
+
+The project is also the platform on which I'm building a separate application (a data-notebook clone). The recursion is intentional: the harness is the tool, the harness building an app is the validation, and the resulting app is the actual goal.
+
+For the design rationale and trade-offs behind each significant decision, see [`docs/decisions.md`](./docs/decisions.md).
+
+## Problem this addresses
+
+LLMs write code competently for single tasks, but coordinating dozens of features across many sessions on a real application is hard. Three forces work against unattended autonomous work:
+
+- **Context windows are finite** — even with 1M context, a multi-day build won't fit in one session.
+- **Self-evaluation is biased** — agents trained to be helpful consistently mark their own output as "done" prematurely.
+- **No persistent memory** — each session starts cold; state has to survive on disk.
+
+A *harness* is the orchestration layer that addresses these: structured state-on-disk (feature list, progress log, git history), multi-shift workflow (each shift = fresh context that reconstructs from disk), schema-level checks (the agent's output is validated before it lands), and explicit budget / timeout guardrails for unattended runs.
+
 ## How it works
 
 The flow has three steps and two roles:
@@ -23,10 +48,10 @@ The flow has three steps and two roles:
 
 3. **Generator** (many Claude shifts)
    A fresh Claude session per invocation that:
-   - follows a mandatory startup protocol (read progress, read features, read `app_spec.md`, `git log`, `init.sh`, boot check, **regression check on already-passing features**)
-   - picks **exactly one** feature with `passes:false`
-   - implements, verifies, flips that one feature's `passes` flag, commits
-   - appends a 3–5 line summary to `claude-progress.txt`
+   - follows a mandatory startup protocol (read progress, read features, read `app_spec.md`, `git log`, `init.sh`, boot check, **regression check on smoke features**)
+   - declares a "batch" of 1+ related features (typically 1–5) and verifies each end-to-end
+   - flips each verified feature's `passes` flag and commits **atomically per feature** (one commit per feature, never squashed)
+   - appends a shift-log entry to `claude-progress.txt` recording the batch and any non-obvious decisions
 
 Each shift starts with no memory of the previous one — like an engineer arriving for a new shift, reconstructing context from disk.
 
@@ -89,6 +114,9 @@ prompts/
   generator.md               # generator system prompt
 templates/
   app_spec.template.md       # copied into projects/<name>/app_spec.md by `init`
+docs/
+  decisions.md               # ADR log: rationale + trade-offs for major design choices
+examples/                    # placeholder for sample runs (see examples/README.md)
 src/
   harness_runner/
     __init__.py
