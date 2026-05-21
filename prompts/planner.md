@@ -59,7 +59,7 @@ If you find yourself wanting a third category, you're probably writing implement
 - Each subsequent feature must be E2E testable through the UI or an HTTP endpoint. Never write features like "refactor the X module" or "add type hints" — those are implementation, not behavior.
 - Order entries roughly by build dependency: scaffolding → backend skeleton → frontend skeleton → cross-cutting basics → product features → polish.
 - Every feature's `passes` is `false`. NEVER set `passes: true` yourself.
-- **Step count distribution**: most features have 2–6 `steps` (focused checks). **At least 8 features must have 8+ steps** that walk a full end-to-end user flow (open app → log in → create → modify → save → reload → verify persistence, etc.). Without this, the test suite degrades to shallow unit-style checks and end-to-end regressions slip through.
+- **Step count distribution**: most features have 2–6 `steps` (focused checks). **Aim for at least 10 features with 8+ steps** that walk a full end-to-end user flow (open app → log in → create → modify → save → reload → verify persistence, etc.). The harness enforces a scaled minimum (roughly 12% of total features, floor 6); aiming for 10 leaves comfortable buffer so a normal output stays safely above the threshold. Without long flows, the test suite degrades to shallow unit-style checks and end-to-end regressions slip through.
 - `steps` are verification actions, not implementation hints. "Click the Save button" — yes. "Add a Save endpoint" — no.
 - Do not mention yourself, "the planner", or "the harness" in any field. The next agent should read this as if it were a normal spec.
 

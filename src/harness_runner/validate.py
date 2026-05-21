@@ -18,6 +18,18 @@ MAX_FEATURES = 200  # Sanity cap — Anthropic ref is 200, anything above is sus
 MIN_SMOKE_FEATURES = 3  # Generator's regression check needs at least this many
 MAX_SMOKE_FEATURES = 10  # Too many "smoke" defeats the point
 
+# Long-flow features (`steps` array length ≥ 8) cover full end-to-end user
+# journeys, which is what catches multi-step regressions that shallow tests
+# miss. The minimum count scales with plan size — a 30-feature plan and an
+# 80-feature plan shouldn't have the same flat threshold (8/30 = 27% vs
+# 8/80 = 10%). Floor of 6 keeps tiny plans honest; `total // 8` gives
+# roughly 12% on larger plans.
+MIN_LONG_STEPS_FEATURES_FLOOR = 6  # absolute minimum regardless of size
+
+
+def _min_long_step_features(total: int) -> int:
+    return max(MIN_LONG_STEPS_FEATURES_FLOOR, total // 8)
+
 
 def validate_planner_output(project_dir: Path) -> list[str]:
     """Return a list of validation errors. Empty list = OK.
@@ -139,10 +151,14 @@ def _validate_feature_list(path: Path) -> list[str]:
             f"sanity cap is {MAX_SMOKE_FEATURES} (smoke should be a small core set)"
         )
 
-    if long_step_count < 8:
+    required_long = _min_long_step_features(len(data))
+    if long_step_count < required_long:
         errs.append(
             f"only {long_step_count} feature(s) have 8+ steps; "
-            "policy requires at least 8 such features for end-to-end coverage"
+            f"policy requires at least {required_long} for end-to-end coverage "
+            f"(threshold scales with plan size: {len(data)} features → "
+            f"floor max({MIN_LONG_STEPS_FEATURES_FLOOR}, {len(data)}//8) "
+            f"= {required_long})"
         )
 
     return errs
