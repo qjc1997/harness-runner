@@ -1,7 +1,7 @@
 import sys
 
 from .budget import BudgetExceededError, assert_under_budget
-from .paths import projects_dir
+from .paths import count_features, projects_dir
 from .retry import generate_with_retry
 from .roles.generator import generate
 from .roles.planner import plan
@@ -121,6 +121,13 @@ def main() -> None:
             except BudgetExceededError as e:
                 print(
                     f"\n[loop] budget exceeded — stopping at shift {i}/{n}: {e}",
+                    file=sys.stderr,
+                )
+                break
+            passing, total = count_features(project_dir)
+            if total > 0 and passing >= total:
+                print(
+                    f"\n[loop] all {total} features passing — exiting early at shift {i}/{n}",
                     file=sys.stderr,
                 )
                 break
