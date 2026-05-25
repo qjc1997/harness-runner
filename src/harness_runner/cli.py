@@ -5,6 +5,7 @@ from .paths import count_features, projects_dir
 from .retry import generate_with_retry
 from .roles.generator import generate
 from .roles.planner import plan
+from .roles.refiner import refine
 from .run import run
 from .scaffold import init
 
@@ -32,6 +33,11 @@ def _usage() -> None:
                 "",
                 "  harness-runner generate-loop <project-name> [n=5]",
                 "      Multiple generator shifts back-to-back.",
+                "",
+                '  harness-runner refine <project-name> "<requirements>"',
+                "      Append-only incremental planning: read existing feature_list.json",
+                "      and add new features for new requirements. Never modifies",
+                "      existing features. Run generate-loop afterwards to implement them.",
             ]
         ),
         file=sys.stderr,
@@ -135,6 +141,13 @@ def main() -> None:
             if generate_with_retry(project_name, generate):
                 successes += 1
         print(f"\n[loop] {successes}/{n} shifts succeeded", file=sys.stderr)
+
+    elif cmd == "refine":
+        if len(rest) < 2:
+            _usage()
+        project_name = rest[0]
+        requirements = " ".join(rest[1:]).strip()
+        refine(project_name, requirements)
 
     else:
         _usage()
