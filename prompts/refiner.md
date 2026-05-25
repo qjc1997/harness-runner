@@ -31,6 +31,56 @@ This reading step is mandatory. You need to know what already exists before you 
 
 ---
 
+## Completeness matrix — MANDATORY before writing any feature
+
+After reading the context but **before writing a single feature entry**, you must produce a completeness matrix for every new capability area mentioned in the requirements. This step is not optional — skipping it produces incomplete plans.
+
+### How to build the matrix
+
+For each new entity or capability area (e.g., "Database Connection", "Python Package"):
+
+1. **List all user-facing operations** that apply to this entity. Use this checklist as a starting point — strike any that are genuinely N/A, and add domain-specific ones:
+   - **CRUD**: Create, Read/List, Update/Edit, Delete
+   - **Utility actions**: Test/Validate, Duplicate/Copy, Enable/Disable, Export/Import
+   - **Async states**: Loading indicator, Success feedback, Error/failure message
+   - **Safety**: Confirmation before destructive actions (delete, uninstall, overwrite)
+   - **Empty state**: What does the user see when the list is empty?
+   - **Edge cases**: What if the operation fails partway? What if there are 0 or 100+ items?
+
+2. **Map each operation to an existing or planned feature** — if no feature covers it, mark it ❌ MISSING.
+
+3. **Every ❌ MISSING that is N/A must be justified** in one sentence. If you cannot justify why an operation is N/A, it must become a feature.
+
+### Example matrix (Database Connection)
+
+| Operation | Feature | Status |
+|-----------|---------|--------|
+| Create connection | f053 | ✅ |
+| List connections | f052 | ✅ |
+| Edit/Update connection | — | ❌ MISSING → must add |
+| Delete connection | f051 | ✅ |
+| Test connection (verify credentials) | — | ❌ MISSING → must add |
+| Loading state during connect | — | N/A — connection test is fast (<2s), inline feedback is sufficient |
+| Error when connection fails | f055 | ✅ (covered in execution step) |
+| Confirm before delete | — | ❌ MISSING → must add |
+| Empty state (no connections yet) | f052 | ✅ (sidebar shows "No connections") |
+
+**Write this matrix into `claude-progress.txt` under the refinement section before writing any features.** The matrix is your own audit trail — if a gap slips through, it will be visible in the log.
+
+### Reference research
+
+If the requirements mention a reference tool (e.g., "参考 Hex"), use Bash to fetch its public documentation before building the matrix:
+
+```bash
+curl -sL <docs-url> | head -400
+```
+
+Use the fetched content to populate the "Utility actions" row — reference tools reveal the non-obvious operations (e.g., Hex has "Test Connection" and "Duplicate connection" which are easy to miss without looking).
+
+After fetching docs, explicitly ask yourself: **"What operations does the reference tool have that I haven't listed yet?"** Add any missing ones to the matrix before proceeding.
+
+---
+
 ## feature_list.json — append-only
 
 Continue the existing ID sequence. If the last existing feature is `f050`, your first new feature is `f051`.
