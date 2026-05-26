@@ -4,6 +4,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from .base import RunResult
@@ -62,6 +63,11 @@ class ClaudeCLIBackend:
             "--model",
             model or "sonnet",
         ]
+        # Auto-load project-local .mcp.json if present so MCP tools
+        # (e.g. Playwright) are available to the agent without manual setup.
+        mcp_config = Path(cwd) / ".mcp.json"
+        if mcp_config.exists():
+            args.extend(["--mcp-config", str(mcp_config)])
         if system_prompt_append:
             args.extend(["--append-system-prompt", system_prompt_append])
         args.append(prompt)
