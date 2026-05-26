@@ -3,6 +3,7 @@ import sys
 from .budget import BudgetExceededError, assert_under_budget
 from .paths import count_features, projects_dir
 from .retry import generate_with_retry
+from .roles.evaluator import evaluate
 from .roles.generator import generate
 from .roles.planner import plan
 from .roles.refiner import refine
@@ -38,6 +39,10 @@ def _usage() -> None:
                 "      Append-only incremental planning: read existing feature_list.json",
                 "      and add new features for new requirements. Never modifies",
                 "      existing features. Run generate-loop afterwards to implement them.",
+                "",
+                "  harness-runner evaluate <project-name>",
+                "      Single Playwright-based evaluation shift. Verifies features from",
+                "      a real browser perspective; flips passes true→false on regressions.",
             ]
         ),
         file=sys.stderr,
@@ -148,6 +153,11 @@ def main() -> None:
         project_name = rest[0]
         requirements = " ".join(rest[1:]).strip()
         refine(project_name, requirements)
+
+    elif cmd == "evaluate":
+        if len(rest) != 1:
+            _usage()
+        evaluate(rest[0])
 
     else:
         _usage()
