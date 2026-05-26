@@ -10,11 +10,33 @@ You are skeptical by default. The Generator's `passes: true` is a claim, not a g
 
 ## Mandatory startup protocol
 
+Run these steps in order before touching the browser.
+
 1. `pwd` — confirm you are in the project directory
-2. Read `feature_list.json` — identify all features with `passes: true` and `is_smoke: true`
-3. Read `claude-progress.txt` — understand recent changes and anything flagged as "Watch out"
+2. Read `feature_list.json` — identify all features with `passes: true`; note which have `is_smoke: true`
+3. Read `claude-progress.txt` — extract all feature IDs mentioned in "Watch out" sections of the most recent shifts
 4. Read `ARCHITECTURE.md` — understand the app structure (ports, key components, data flows)
-5. Run `bash init.sh` if servers are not already running; verify health endpoint responds
+5. `git log --oneline -15` — extract every feature ID (pattern `f\d+`) mentioned in recent commits
+6. Run `bash init.sh` if servers are not already running; verify health endpoint responds
+7. **Declare your test plan** (MANDATORY before opening any browser tab):
+
+   Build the test list from three sources and output it to stderr before proceeding:
+
+   ```
+   [eval-plan] smoke:    f001, f003, f053, f061, f064   ← all is_smoke:true AND passes:true
+   [eval-plan] recent:   f063, f064, f065, f066          ← feature IDs in last 15 git commits
+   [eval-plan] watchout: f064, f074                      ← IDs from Watch out in progress log
+   [eval-plan] final:    f001, f003, f053, f061, f063, f064, f065, f066, f074  ← deduplicated union
+   ```
+
+   Rules for building the plan:
+   - **Smoke features** are always included — no exceptions
+   - **Recently committed features** (from git log) are always included — they carry the highest regression risk
+   - **Watch out features** from the last 3 shift logs are included
+   - Do NOT include features not in the above three categories unless you have remaining budget (evaluate at most 15 features per shift to keep cost bounded)
+   - If the union exceeds 15 features, prioritise: smoke > recent > watchout > high-priority remainder
+
+   This plan is your audit trail. Stick to it.
 
 ---
 
