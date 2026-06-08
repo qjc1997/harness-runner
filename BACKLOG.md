@@ -144,3 +144,38 @@ Track these informally first; formalize into prompt rules or auto-checks once we
 - **Target users**: solo (the bot owner) vs. multi-user. Affects whether the built app needs auth/isolation.
 - **Per-build budget cap**: Anthropic's reference runs are 6h / $200. We need a sane default and a hard ceiling.
 - **Generator self-testing**: Anthropic's two articles disagree on whether the Generator should self-test with a browser. Step 1 says no (just curl + pytest). Step 2 with Evaluator can revisit.
+
+---
+
+## Project: rome-guide — Offline AI Museum Guide for Italy Trip
+
+**Target date**: July 2026 (user going to Rome/Vatican next month)
+
+### Overview
+Offline AI guide for Rome and Vatican museums. Uses CLIP image search + VLM (Qwen2-VL) for artwork identification and Q&A. Designed for no-internet / poor-signal environments inside museums.
+
+### Two operation modes (both required)
+1. **Laptop mode**: Laptop in backpack as server, iPhone 17 PM as client via WiFi hotspot. Best quality, most venues.
+2. **Phone mode (Xiaomi 11)**: For venues that ban backpacks (e.g., Borghese Gallery). Xiaomi 11 as server (Snap 888, 8-12GB RAM), iPhone 17 PM as client via hotspot.
+
+### Scope
+- **Sites**: Vatican Museums (Sistine Chapel, Raphael Rooms, antiquities), St. Peter's Basilica, Borghese Gallery, Colosseum, Roman Forum, Pantheon, Castel Sant'Angelo
+- **Knowledge base**: ~500-800 artworks, Wikipedia + museum open data, pre-downloaded images
+- **Test set**: ~100-200 user photos + supplemental internet photos of same venues
+
+### Key components for harness-runner to build
+1. Ollama setup + model download in init.sh (Qwen2-VL 7B for laptop, 2B for phone mode)
+2. CLIP image indexing pipeline (build_index.py — one-time offline step)
+3. FastAPI backend: /search/image (CLIP match) + /chat (VLM Q&A with artwork context)
+4. Mobile-optimized React frontend: camera capture, result display, follow-up chat
+5. Knowledge base: artworks.json + images/ + ChromaDB/SQLite-vec embeddings
+6. Accuracy Evaluator: use test photo set, measure Top-1 / Top-3 recognition accuracy
+
+### Novel challenges vs mini-hex
+- External dependency management (Ollama install + model pull in init.sh)
+- ML data pipeline (CLIP embedding build step, not just CRUD)
+- Dual deployment target (laptop vs phone server)
+- Quantitative accuracy testing with real photos as ground truth
+
+### When to start
+After Italy trip planning is confirmed. Knowledge base prep (scraping + cleaning) should start ~2 weeks before departure.

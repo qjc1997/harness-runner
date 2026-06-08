@@ -3,7 +3,7 @@ import sys
 from typing import Optional
 
 from .git_util import git_commit_all, git_init
-from .paths import projects_dir, templates_dir
+from .paths import projects_dir, repo_dir, templates_dir
 
 
 def init(project_name: str, brief: Optional[str] = None) -> None:
