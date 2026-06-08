@@ -92,10 +92,11 @@ def code_review(
         for fid in feature_ids
     )
 
-    # Truncate diff if very large (keep first 8000 chars — enough to catch quality issues)
-    diff_truncated = diff[:8000]
-    if len(diff) > 8000:
-        diff_truncated += f"\n\n[... diff truncated at 8000 chars, {len(diff) - 8000} more chars not shown ...]"
+    # Truncate diff if very large (keep first 24000 chars — Haiku has 200k context,
+    # cost is negligible, and data-fetching code often appears later in large diffs)
+    diff_truncated = diff[:24000]
+    if len(diff) > 24000:
+        diff_truncated += f"\n\n[... diff truncated at 24000 chars, {len(diff) - 24000} more chars not shown ...]"
 
     user_prompt = (
         f"# Features implemented in this shift\n\n{feature_summary}\n\n"

@@ -56,7 +56,7 @@ class ClaudeCLIBackend:
         # --mcp-config must come immediately after -p, before --output-format
         # and other flags, otherwise claude CLI mis-parses the argument order.
         args: list[str] = ["claude", "-p"]
-        mcp_config = Path(cwd) / ".mcp.json"
+        mcp_config = Path(cwd).resolve() / ".mcp.json"
         if mcp_config.exists():
             args.extend(["--mcp-config", str(mcp_config)])
         args.extend([
