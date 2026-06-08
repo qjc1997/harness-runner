@@ -3,6 +3,7 @@ import sys
 from .budget import BudgetExceededError, assert_under_budget
 from .paths import count_features, projects_dir
 from .retry import generate_with_retry
+from .roles.code_reviewer import append_code_review_to_progress, code_review
 from .roles.evaluator import evaluate
 from .roles.generator import generate
 from .roles.planner import plan
@@ -43,6 +44,11 @@ def _usage() -> None:
                 "  harness-runner evaluate <project-name>",
                 "      Single Playwright-based evaluation shift. Verifies features from",
                 "      a real browser perspective; flips passes true→false on regressions.",
+                "",
+                "  harness-runner code-review <project-name> [feature-ids...]",
+                "      Review implementation quality of the latest git diff using Haiku.",
+                "      Checks robustness, API usage, error handling, and best practices.",
+                "      If feature-ids omitted, reviews the last N commits automatically.",
             ]
         ),
         file=sys.stderr,
@@ -158,6 +164,64 @@ def main() -> None:
         if len(rest) != 1:
             _usage()
         evaluate(rest[0])
+
+    elif cmd == "code-review":
+        if len(rest) < 1:
+            _usage()
+        project_name = rest[0]
+        feature_ids = rest[1:] if len(rest) > 1 else []
+        project_dir = projects_dir() / project_name
+        if not project_dir.exists():
+            print(f"project not found: {project_dir}", file=sys.stderr)
+            sys.exit(1)
+        # Load feature descriptions if IDs provided, else auto-detect from recent commits
+        feature_descriptions: dict[str, str] = {}
+        if feature_ids:
+            try:
+                import json
+                with (project_dir / "feature_list.json").open(encoding="utf-8") as f:
+                    features = json.load(f)
+                feature_descriptions = {
+                    ft["id"]: ft.get("description", "")
+                    for ft in features
+                    if isinstance(ft, dict) and ft.get("id") in feature_ids
+                }
+            except Exception:
+                pass
+        else:
+            # Auto-detect last N passing features from git log
+            try:
+                import json
+                import subprocess
+                log = subprocess.run(
+                    ["git", "log", "--oneline", "-5"],
+                    cwd=str(project_dir), capture_output=True, text=True
+                )
+                # Extract feature IDs from commit messages
+                import re
+                feature_ids = re.findall(r'\bf(\d{3,4})\b', log.stdout)
+                feature_ids = [f"f{n}" for n in sorted(set(feature_ids), key=int)][-5:]
+                with (project_dir / "feature_list.json").open(encoding="utf-8") as f:
+                    features = json.load(f)
+                feature_descriptions = {
+                    ft["id"]: ft.get("description", "")
+                    for ft in features
+                    if isinstance(ft, dict) and ft.get("id") in feature_ids
+                }
+            except Exception:
+                pass
+
+        result = code_review(project_dir, feature_ids or ["recent"], feature_descriptions)
+        print(f"\n[code-review] verdict={result.verdict}  issues={len(result.issues)}  cost=${result.cost_usd:.4f}")
+        for issue in result.issues:
+            print(f"  [{issue.severity.upper()}] {issue.category} | {issue.file}")
+            print(f"    {issue.description}")
+            print(f"    → {issue.suggestion}")
+        if result.verdict in ("warn", "fail"):
+            append_code_review_to_progress(project_dir, result, feature_ids)
+            print(f"\n[code-review] issues appended to claude-progress.txt")
+        if result.verdict == "error":
+            print(f"[code-review] error: {result.error}", file=sys.stderr)
 
     else:
         _usage()
