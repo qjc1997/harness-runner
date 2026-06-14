@@ -102,7 +102,7 @@ def code_review(
         f"# Features implemented in this shift\n\n{feature_summary}\n\n"
         f"# Git diff\n\n```diff\n{diff_truncated}\n```\n\n"
         "Review this diff for implementation quality issues. "
-        "Check all six categories from your protocol, then output CODE_REVIEW_RESULT_JSON."
+        "Check all eight categories from your protocol, then output CODE_REVIEW_RESULT_JSON."
     )
 
     try:

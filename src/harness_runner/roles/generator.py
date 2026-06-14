@@ -7,6 +7,7 @@ from typing import Optional
 from ..backends import ShiftTimeoutError, get_backend
 from ..history import record_shift
 from ..paths import count_features, format_progress, projects_dir, prompts_dir
+from ..quality_gate import append_quality_gate_to_progress, quality_gate
 from .code_reviewer import CodeReviewResult, append_code_review_to_progress, code_review
 
 
@@ -90,6 +91,28 @@ def generate(project_name: str) -> None:
         except Exception as rev_err:
             print(f"[code_reviewer] unexpected error (skipping): {rev_err}", file=sys.stderr)
 
+    # ── Quality Gate (deterministic) ──────────────────────────────────────────
+    # Static checks that catch degraded-data and config-drift bugs the LLM
+    # reviewer and curl-based self-tests miss (placeholder images, dev-proxy
+    # port mismatch). Runs every shift — cheap, no LLM, no servers.
+    gate_note = ""
+    try:
+        gate_result = quality_gate(project_dir)
+        if gate_result.verdict != "pass":
+            append_quality_gate_to_progress(project_dir, gate_result)
+            high = gate_result.fail_count
+            symbol = "✗" if gate_result.verdict == "fail" else "⚠"
+            print(
+                f"[quality_gate] {symbol} verdict={gate_result.verdict} "
+                f"issues={len(gate_result.issues)} ({high} high)",
+                file=sys.stderr,
+            )
+            for i in gate_result.issues:
+                print(f"[quality_gate]   [{i.severity}] {i.category} @ {i.location}", file=sys.stderr)
+            gate_note = f"; quality_gate={gate_result.verdict.upper()} ({len(gate_result.issues)} issues)"
+    except Exception as gate_err:
+        print(f"[quality_gate] unexpected error (skipping): {gate_err}", file=sys.stderr)
+
     print("\n[generator] done.", file=sys.stderr)
     print(format_progress(passing_after, total_after), file=sys.stderr)
 
@@ -104,6 +127,7 @@ def generate(project_name: str) -> None:
         elif review_result.verdict == "error":
             review_note = f"; code_review=error ({review_result.error})"
 
+    combined_note = (review_note + gate_note).lstrip("; ")
     record_shift(
         project_dir,
         role="generator",
@@ -117,7 +141,7 @@ def generate(project_name: str) -> None:
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         model=result.model,
-        note=review_note.lstrip("; ") if review_note else None,
+        note=combined_note or None,
     )
 
     print(result.result)

@@ -56,6 +56,17 @@ Examine the diff carefully. For each changed file, check every item in this list
 - Is there an established, official way to do what the code is doing, and is the code NOT using it?
 - Examples: constructing SQL strings instead of using parameterized queries; manual JSON parsing instead of using a schema library; manual base64 instead of a library function.
 
+### 7. Degraded-output fallbacks (treat as completion failures)
+- Does the code, on failure, silently substitute **fake/placeholder output** and then continue as if it succeeded? This makes a broken feature look "done."
+- RED FLAG (HIGH): a failed image/file download falls back to writing a **solid-color placeholder** or empty file, and the item is still marked present. The list renders, but the content is fake.
+- RED FLAG (HIGH): a failed API/network call returns **mock/stub/hardcoded sample data** instead of surfacing the error.
+- RED FLAG: lorem-ipsum / "example" / TODO placeholder strings written into data that ships to users.
+- A fallback is only acceptable if the failure is **also surfaced** (logged AND the item marked incomplete/excluded), not masked. "Non-fatal so the script finishes" is NOT a valid reason to fabricate content.
+
+### 8. Cross-file config consistency
+- Do related config values across files agree? Most common: a frontend dev-proxy `target` port vs. the backend's actual listen port. A mismatch means every browser API call 502s while the backend curl-tests fine.
+- RED FLAG (HIGH): `vite.config.*` proxy `target: http://localhost:PORT` where PORT ≠ the `BACKEND_PORT`/uvicorn `--port` used in `init.sh`/`.env`.
+
 ---
 
 ## Severity levels
@@ -72,7 +83,7 @@ After your analysis, you MUST end your response with exactly this block:
 
 ```
 CODE_REVIEW_RESULT_JSON:
-{"verdict": "PASS"|"WARN"|"FAIL", "issues": [{"file": "...", "line_approx": 0, "severity": "high"|"medium"|"low", "category": "robustness"|"best_practice"|"completeness"|"error_handling"|"maintainability", "description": "...", "suggestion": "..."}]}
+{"verdict": "PASS"|"WARN"|"FAIL", "issues": [{"file": "...", "line_approx": 0, "severity": "high"|"medium"|"low", "category": "robustness"|"best_practice"|"completeness"|"error_handling"|"maintainability"|"degraded_output"|"config_drift", "description": "...", "suggestion": "..."}]}
 ```
 
 - `verdict`: `PASS` if no HIGH issues; `WARN` if MEDIUM issues only; `FAIL` if any HIGH issues
@@ -80,4 +91,4 @@ CODE_REVIEW_RESULT_JSON:
 - `description`: what is wrong, specifically (reference file name and what the code does)
 - `suggestion`: what to do instead (be concrete — name the API, library, or pattern)
 
-**Default to finding issues.** Only output PASS if you have explicitly checked all six categories and found nothing concerning.
+**Default to finding issues.** Only output PASS if you have explicitly checked all eight categories and found nothing concerning.

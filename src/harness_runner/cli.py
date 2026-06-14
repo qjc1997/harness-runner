@@ -2,6 +2,7 @@ import sys
 
 from .budget import BudgetExceededError, assert_under_budget
 from .paths import count_features, projects_dir
+from .quality_gate import append_quality_gate_to_progress, quality_gate
 from .retry import generate_with_retry
 from .roles.code_reviewer import append_code_review_to_progress, code_review
 from .roles.evaluator import evaluate
@@ -49,6 +50,11 @@ def _usage() -> None:
                 "      Review implementation quality of the latest git diff using Haiku.",
                 "      Checks robustness, API usage, error handling, and best practices.",
                 "      If feature-ids omitted, reviews the last N commits automatically.",
+                "",
+                "  harness-runner quality-gate <project-name>",
+                "      Deterministic static checks (no LLM): dev-proxy/backend port",
+                "      mismatch, solid-color placeholder images, and placeholder/mock",
+                "      text in served data. Exits 1 if any HIGH issue is found.",
             ]
         ),
         file=sys.stderr,
@@ -222,6 +228,24 @@ def main() -> None:
             print(f"\n[code-review] issues appended to claude-progress.txt")
         if result.verdict == "error":
             print(f"[code-review] error: {result.error}", file=sys.stderr)
+
+    elif cmd == "quality-gate":
+        if len(rest) != 1:
+            _usage()
+        project_dir = projects_dir() / rest[0]
+        if not project_dir.exists():
+            print(f"project not found: {project_dir}", file=sys.stderr)
+            sys.exit(1)
+        result = quality_gate(project_dir)
+        print(f"\n[quality-gate] verdict={result.verdict}  issues={len(result.issues)}")
+        for i in result.issues:
+            print(f"  [{i.severity.upper()}] {i.category} @ {i.location}")
+            print(f"    {i.description}")
+            print(f"    → {i.suggestion}")
+        if result.verdict != "pass":
+            append_quality_gate_to_progress(project_dir, result)
+        if result.fail_count:
+            sys.exit(1)
 
     else:
         _usage()

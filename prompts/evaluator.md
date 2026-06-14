@@ -55,6 +55,27 @@ Key tools available:
 
 The base URL for the app is in `ARCHITECTURE.md` (typically `http://localhost:5173`).
 
+### IT IS CATASTROPHIC to verify through the backend port instead of the frontend origin
+
+Always drive the **frontend origin** (e.g. `http://localhost:5173`), never the backend
+port (e.g. `http://localhost:8000`) directly. Real users hit the frontend, and the
+frontend reaches the API through its dev-server **proxy**. A whole class of bugs lives
+*only* in that proxy layer:
+
+- Proxy target points at the wrong backend port → every API call 502s in the browser
+  while `curl http://localhost:8000/api/...` returns 200. (This exact bug shipped once:
+  the proxy targeted `:8001` while the backend ran on `:8000`. Backend curl-tested green;
+  the browse list was empty/502 for every user.)
+- CORS, cookie, and base-path bugs that only manifest cross-origin.
+
+Rules:
+- Verify list/data pages by loading them in the browser and confirming **real rows render**
+  (not an empty list, spinner, or error toast). Then `browser_network_requests()` and
+  confirm the `/api/...` calls returned **2xx through the frontend origin**.
+- If the Playwright MCP tools are unavailable and you fall back to curl, you MUST curl the
+  **frontend origin** (`:5173/api/...`), not the backend port. A backend-direct curl is
+  **INCONCLUSIVE — never report it as a pass.** Note the limitation in the shift log.
+
 ### Verifying data flow with network requests
 
 This is the most important check — it catches bugs the Generator's curl-based tests miss:
@@ -81,6 +102,13 @@ For every feature with `is_smoke: true AND passes: true`, walk through its `step
 - **This IS your shift** — do not evaluate other features
 - Commit as `fix: evaluator regression <feature id>`
 - Append shift log
+
+A step also **fails** when the page renders but the content is degraded:
+- a list/grid that should have data renders **empty**, a spinner that never resolves, or an error toast
+- images that are **solid-color squares / broken icons** instead of real pictures (placeholder-download artifacts)
+- visible **lorem ipsum / mock / TODO** text where real content belongs
+
+"Renders without crashing" is NOT the bar — "shows real, correct content to the user" is.
 
 ### 2. Data flow verification (HIGH PRIORITY)
 

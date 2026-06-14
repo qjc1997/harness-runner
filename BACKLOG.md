@@ -2,6 +2,40 @@
 
 Deferred items, in rough priority order. Move out of this file into an actual implementation when picked up.
 
+## DONE 2026-06-12 — Quality gate: config-drift + placeholder-data detection
+
+Implemented `src/harness_runner/quality_gate.py` — deterministic static checks (no LLM, no servers) that run after every Generator shift and as a standalone `harness-runner quality-gate <project>` command:
+
+- **config-drift (HIGH)**: frontend dev-proxy `target` port vs. backend listen port (`BACKEND_PORT`/uvicorn `--port`). Catches the rome-guide 502 (proxy→8001, backend→8000) that curl-on-backend missed.
+- **placeholder-image (HIGH/MED)**: solid-color or <5KB image files in served data dirs (PIL color-count, file-size fallback). Catches the seed_full.py colored-square fallback.
+- **placeholder-text (MED)**: lorem-ipsum / mock / TODO / example.com in served JSON.
+
+Findings append to `claude-progress.txt` (same self-repair loop as the code reviewer) and are recorded in the shift note. Tests: `tests/test_quality_gate.py` (8 cases, stdlib unittest). Prompt updates: evaluator.md now mandates testing through the **frontend origin** (backend-direct curl = INCONCLUSIVE, never a pass) and treats empty/placeholder content as a failed step; code_reviewer.md gained categories 7 (degraded-output fallbacks) and 8 (cross-file config consistency).
+
+## TODO — Playwright smoke-regression gate (heavier follow-on)
+
+The quality gate above is static. The complementary dynamic gate: after each shift, re-run the `is_smoke: true` browser flows through the **frontend origin** and flip any that now 502/empty back to `passes: false` automatically — without waiting for a manually-triggered `evaluate` shift. This is what would have caught the proxy regression *at the shift that introduced it*. Needs: servers running + Playwright MCP, a cheap "load + non-empty + no console error" probe per smoke feature, and wiring into `generate-loop` (e.g. every N shifts or when shared config files changed in the diff). Evaluator prompt already specifies the frontend-origin rule; this automates the cadence.
+
+## Script execution self-repair loop
+
+**Why**: rome-guide data pipeline (2026-06-08) exposed that Generator-produced data scripts fail in ways that need human diagnosis — wrong QIDs (hallucinated), Wikimedia UA blocks, 429 rate limits. The generate-loop has a refine cycle for feature code, but there's no equivalent for standalone scripts. Each failure required multiple manual kill-restart cycles.
+
+**What**: When a harness-managed script exits non-zero OR its stdout/stderr matches known error patterns, automatically call a lightweight Script Repair agent that:
+1. Reads the script source + the last N lines of output
+2. Identifies the failure category: wrong ID, blocked UA, rate limit, missing fallback, etc.
+3. Patches the script in-place and re-runs (up to 3 attempts)
+4. If it can't repair, escalates with a structured error report
+
+**Error patterns to detect** (from rome-guide incident):
+- `403 Forbidden` on image download → switch `requests.get` to `subprocess.run(['curl', ...])`
+- QID resolves to wrong entity (label mismatch) → replace hardcoded ID with `wbsearchentities` name lookup
+- `429 Too Many Requests` → add `Retry-After` backoff, increase inter-request delay
+- `0 items found` for a venue → try alternative SPARQL property (P276 → P195)
+
+**Dry-run validation gate** (prerequisite): before running a script at full scale, always run with `--limit 3` or `--dry-run` and check that at least 1 item succeeded end-to-end. Abort and repair if 0 succeed.
+
+**When to do it**: next time a data pipeline or utility script is generated for a project (rome-guide or any new harness project).
+
 ## Backend: `anthropic_api` — direct Messages API
 
 **Why**: From 2026-06-15, `claude -p` (the only backend we currently have) drains a separate, capped monthly credit pool on Anthropic subscriptions, metered at full API rates. For heavy or production usage the subscription path stops making sense — at that point we want a backend that talks directly to the Anthropic Messages API with our own API key, bypassing the subscription entirely (same rates, no $20 minimum, no monthly cap to worry about).
