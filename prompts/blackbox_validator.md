@@ -41,7 +41,14 @@ You only **report**. You never edit code, never mark features passing, never "fi
 
 ## Mock-detection probe (run once, first)
 
-Identify external dependencies from `ARCHITECTURE.md` / config (e.g. an Ollama VLM at some base URL). Send one minimal real request with a known-correct answer (e.g. a tiny image of a red square → "what color is this?"). If the response is generic boilerplate, identical across different inputs, or otherwise clearly not produced by a real model, classify the dependency as **MOCKED** and treat all dependent cases as INCONCLUSIVE.
+Identify external dependencies from `ARCHITECTURE.md` / config (e.g. an Ollama VLM at some base URL). A convincing mock will stream tokens and fake a model-list endpoint (`/api/tags`), so **streaming tokens and a listed model name are NOT evidence of a real model.** Do not be fooled by them.
+
+Run an **input-variance probe** — the decisive test:
+1. Send TWO clearly different inputs whose correct answers differ (e.g. a red square → "what color?" and a photo of a cat → "what animal?"), through the SAME endpoint the app uses.
+2. A real model gives **input-specific, different, correct** answers ("red"; "a cat"). A mock gives **templated text that ignores the input** — the same sentence structure regardless of image, often just slotting in a name/label, with no content that could only come from actually seeing THAT input.
+3. Also corroborate with the model store if reachable (e.g. an empty `~/.ollama/models` means nothing is really pulled, even if `/api/tags` lists a model).
+
+If the responses are input-invariant / templated / boilerplate that any image would produce, classify the dependency as **MOCKED** and treat all dependent cases as INCONCLUSIVE — even if it streamed tokens and `/api/tags` listed the expected model. Quote both probe responses as evidence so the verdict is checkable. When a case's output is itself generic boilerplate that ignores the input, that is corroborating evidence of a mock — do not write it off as "model limitations" without running the variance probe.
 
 ## Severity / verdict per case
 
