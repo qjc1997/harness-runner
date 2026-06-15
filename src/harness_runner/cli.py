@@ -4,6 +4,7 @@ from .budget import BudgetExceededError, assert_under_budget
 from .paths import count_features, projects_dir
 from .quality_gate import append_quality_gate_to_progress, quality_gate
 from .retry import generate_with_retry
+from .roles.blackbox_validator import blackbox
 from .roles.code_reviewer import append_code_review_to_progress, code_review
 from .roles.evaluator import evaluate
 from .roles.generator import generate
@@ -55,6 +56,12 @@ def _usage() -> None:
                 "      Deterministic static checks (no LLM): dev-proxy/backend port",
                 "      mismatch, solid-color placeholder images, and placeholder/mock",
                 "      text in served data. Exits 1 if any HIGH issue is found.",
+                "",
+                "  harness-runner blackbox <project-name>",
+                "      Adversarial black-box validation: drives the RUNNING app through",
+                "      its real public interface with real-world inputs from",
+                "      blackbox_cases.json, judges semantic correctness, and detects",
+                "      mocked dependencies. Reports only (never edits). Exits 1 on FAIL.",
             ]
         ),
         file=sys.stderr,
@@ -245,6 +252,24 @@ def main() -> None:
         if result.verdict != "pass":
             append_quality_gate_to_progress(project_dir, result)
         if result.fail_count:
+            sys.exit(1)
+
+    elif cmd == "blackbox":
+        if len(rest) != 1:
+            _usage()
+        result = blackbox(rest[0])
+        print(f"\n[blackbox] verdict={result.verdict}  cases={len(result.cases)}"
+              f"  mock_detected={result.mock_detected}")
+        for c in result.cases:
+            print(f"  [{c.result.upper()}] {c.id}")
+            if c.result != "pass":
+                print(f"    expected: {c.expected}")
+                print(f"    actual:   {c.actual[:200]}")
+        if result.mock_detected:
+            print(f"  ⚠️ MOCK: {result.mock_detail}")
+        if result.error:
+            print(f"[blackbox] error: {result.error}", file=sys.stderr)
+        if result.verdict == "fail":
             sys.exit(1)
 
     else:

@@ -12,6 +12,19 @@ Implemented `src/harness_runner/quality_gate.py` — deterministic static checks
 
 Findings append to `claude-progress.txt` (same self-repair loop as the code reviewer) and are recorded in the shift note. Tests: `tests/test_quality_gate.py` (8 cases, stdlib unittest). Prompt updates: evaluator.md now mandates testing through the **frontend origin** (backend-direct curl = INCONCLUSIVE, never a pass) and treats empty/placeholder content as a failed step; code_reviewer.md gained categories 7 (degraded-output fallbacks) and 8 (cross-file config consistency).
 
+## DONE 2026-06-15 — Black-box validator role
+
+Implemented `roles/blackbox_validator.py` + `prompts/blackbox_validator.md` + `harness-runner blackbox <project>`. An independent, adversarial reviewer that judges the RUNNING app from the outside the way an external human/agent reviewer does — the mechanism the internal evaluator lacks:
+
+- **Real-world inputs** from `projects/<name>/blackbox_cases.json` (real image URLs, not Generator fixtures); downloads the actual file.
+- **Front-door only**: drives the app through the frontend origin / public API, never backend-direct.
+- **Semantic judgment**: passes only if the output is actually correct (names the right subject), not if a structural signal fired.
+- **Mock detection**: probes external deps with a known-answer request; if a dependency is mocked/stubbed, dependent cases are INCONCLUSIVE (never PASS) and the mock is reported prominently.
+- **Adversarial**: cases target out-of-KB / near-duplicate / edge inputs.
+- Reports only (never edits): writes `blackbox_report.json`, appends failures to `claude-progress.txt`, exits 1 on FAIL.
+
+Origin: the rome-guide saga where the internal evaluator passed f077-f083 against a mocked VLM and a synthetic fixture; a real-photo black-box test (Bocca della Verità) exposed both the mock and a confidence-threshold misfire. This role institutionalizes that external check. Tests: `tests/test_blackbox_validator.py`. Effort note: this role benefits from high reasoning effort (semantic judgment / adversarial design), unlike the deterministic quality gate.
+
 ## TODO — Playwright smoke-regression gate (heavier follow-on)
 
 The quality gate above is static. The complementary dynamic gate: after each shift, re-run the `is_smoke: true` browser flows through the **frontend origin** and flip any that now 502/empty back to `passes: false` automatically — without waiting for a manually-triggered `evaluate` shift. This is what would have caught the proxy regression *at the shift that introduced it*. Needs: servers running + Playwright MCP, a cheap "load + non-empty + no console error" probe per smoke feature, and wiring into `generate-loop` (e.g. every N shifts or when shared config files changed in the diff). Evaluator prompt already specifies the frontend-origin rule; this automates the cadence.
