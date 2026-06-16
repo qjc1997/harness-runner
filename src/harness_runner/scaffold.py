@@ -3,7 +3,7 @@ import sys
 from typing import Optional
 
 from .git_util import git_commit_all, git_init
-from .paths import projects_dir, templates_dir
+from .paths import projects_dir, repo_dir, templates_dir
 
 
 def init(project_name: str, brief: Optional[str] = None) -> None:
@@ -29,6 +29,11 @@ def init(project_name: str, brief: Optional[str] = None) -> None:
     else:
         template = templates_dir() / "app_spec.template.md"
         shutil.copyfile(template, spec_target)
+
+    # Copy Playwright MCP config so the Evaluator role has browser tools available.
+    mcp_template = repo_dir() / "mcp.template.json"
+    if mcp_template.exists():
+        shutil.copyfile(mcp_template, project_dir / ".mcp.json")
 
     git_init(project_dir)
     git_commit_all(project_dir, "harness: project scaffold (app_spec.md)")

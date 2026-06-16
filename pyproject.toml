@@ -11,6 +11,9 @@ requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Qiao Jiacheng" }]
 
+[project.optional-dependencies]
+anthropic_api = ["anthropic>=0.28"]
+
 [project.scripts]
 harness-runner = "harness_runner.cli:main"
 

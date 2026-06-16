@@ -16,17 +16,21 @@ Select a backend via:
 """
 
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from .base import Backend, RunResult
 from .claude_cli import ClaudeCLIBackend, ShiftTimeoutError
 
 
-_REGISTRY = {
+def _load_anthropic_api() -> type:
+    from .anthropic_api import AnthropicAPIBackend  # noqa: PLC0415
+    return AnthropicAPIBackend
+
+
+_REGISTRY: dict[str, Any] = {
     "claude_cli": ClaudeCLIBackend,
-    # Future:
-    # "anthropic_api": AnthropicAPIBackend,   # direct Messages API, no subscription
-    # "codex_cli":     CodexCLIBackend,       # OpenAI Codex CLI
+    "anthropic_api": _load_anthropic_api,   # lazy — avoids ImportError if sdk absent
+    # "codex_cli":     CodexCLIBackend,
     # "gemini_cli":    GeminiCLIBackend,
 }
 
@@ -44,7 +48,13 @@ def get_backend(name: Optional[str] = None) -> Backend:
             f"available: {available}\n"
             f"set HARNESS_BACKEND env var to override the default."
         )
-    return _REGISTRY[chosen]()
+    factory = _REGISTRY[chosen]
+    # Lazy loaders are callables that return a class; direct entries are already classes.
+    if callable(factory) and not isinstance(factory, type):
+        cls = factory()
+    else:
+        cls = factory
+    return cls()
 
 
 __all__ = ["Backend", "RunResult", "ShiftTimeoutError", "get_backend"]

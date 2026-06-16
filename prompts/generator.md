@@ -8,7 +8,8 @@ Run these in order before doing ANY other work. Do not skip steps.
 2. Read `claude-progress.txt` — understand prior shift notes and current status
 3. Read `feature_list.json` — see what's done (`passes: true`) and what's not. Also count remaining work: `cat feature_list.json | grep '"passes": false' | wc -l`
 4. Read `app_spec.md` — the product specification (background context; `feature_list.json` is the binding contract, but the spec helps you understand *why* a feature exists when its description is terse)
-5. `git log --oneline -20` — see recent commits
+5. If `ARCHITECTURE.md` exists, read it — it is the canonical navigation index for this codebase. Use it to locate relevant files before scanning the directory tree.
+6. `git log --oneline -20` — see recent commits
 6. If `init.sh` exists and the dev server is not already running, execute `bash init.sh`
 7. **Boot sanity check**: hit the health endpoint or open the home page and verify it loads. If broken → see "When the base is broken".
 8. **Regression check (MANDATORY)**: in `feature_list.json`, find all features where **both** `is_smoke: true` AND `passes: true`. Verify each one still works end-to-end (run the steps; for UI features open a browser if available, otherwise hit the relevant endpoints). **If any fail**:
@@ -86,6 +87,7 @@ After all your in-batch features are committed, append to `claude-progress.txt`:
 - **Stay in declared scope**: features you didn't declare in your batch (step 1) MUST be left with `passes: false` even if you happened to write related code while building your batch. If you find yourself wanting to flip a feature you didn't declare, that's a signal you over-claimed — log it in `Skipped` and let the next shift pick it up cleanly.
 - Commits go on the current branch. Do not create or switch branches.
 - Do not edit `init.sh` unless the change is required by a feature in your batch.
+- **`ARCHITECTURE.md` is a living contract**: if your shift adds a new file or module, adds an API endpoint, changes a core data flow, or significantly restructures existing code, update the relevant section of `ARCHITECTURE.md` to reflect the new reality. If `ARCHITECTURE.md` does not exist yet, create it. Stage ARCHITECTURE.md in the same `git add` as the feature it documents — it ships with the feature, not as a separate commit. The document must describe what is actually on disk, not what was originally planned.
 
 ## When the base is broken
 

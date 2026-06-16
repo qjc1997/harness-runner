@@ -2,6 +2,53 @@
 
 Deferred items, in rough priority order. Move out of this file into an actual implementation when picked up.
 
+## DONE 2026-06-12 — Quality gate: config-drift + placeholder-data detection
+
+Implemented `src/harness_runner/quality_gate.py` — deterministic static checks (no LLM, no servers) that run after every Generator shift and as a standalone `harness-runner quality-gate <project>` command:
+
+- **config-drift (HIGH)**: frontend dev-proxy `target` port vs. backend listen port (`BACKEND_PORT`/uvicorn `--port`). Catches the rome-guide 502 (proxy→8001, backend→8000) that curl-on-backend missed.
+- **placeholder-image (HIGH/MED)**: solid-color or <5KB image files in served data dirs (PIL color-count, file-size fallback). Catches the seed_full.py colored-square fallback.
+- **placeholder-text (MED)**: lorem-ipsum / mock / TODO / example.com in served JSON.
+
+Findings append to `claude-progress.txt` (same self-repair loop as the code reviewer) and are recorded in the shift note. Tests: `tests/test_quality_gate.py` (8 cases, stdlib unittest). Prompt updates: evaluator.md now mandates testing through the **frontend origin** (backend-direct curl = INCONCLUSIVE, never a pass) and treats empty/placeholder content as a failed step; code_reviewer.md gained categories 7 (degraded-output fallbacks) and 8 (cross-file config consistency).
+
+## DONE 2026-06-15 — Black-box validator role
+
+Implemented `roles/blackbox_validator.py` + `prompts/blackbox_validator.md` + `harness-runner blackbox <project>`. An independent, adversarial reviewer that judges the RUNNING app from the outside the way an external human/agent reviewer does — the mechanism the internal evaluator lacks:
+
+- **Real-world inputs** from `projects/<name>/blackbox_cases.json` (real image URLs, not Generator fixtures); downloads the actual file.
+- **Front-door only**: drives the app through the frontend origin / public API, never backend-direct.
+- **Semantic judgment**: passes only if the output is actually correct (names the right subject), not if a structural signal fired.
+- **Mock detection**: probes external deps with a known-answer request; if a dependency is mocked/stubbed, dependent cases are INCONCLUSIVE (never PASS) and the mock is reported prominently.
+- **Adversarial**: cases target out-of-KB / near-duplicate / edge inputs.
+- Reports only (never edits): writes `blackbox_report.json`, appends failures to `claude-progress.txt`, exits 1 on FAIL.
+
+Origin: the rome-guide saga where the internal evaluator passed f077-f083 against a mocked VLM and a synthetic fixture; a real-photo black-box test (Bocca della Verità) exposed both the mock and a confidence-threshold misfire. This role institutionalizes that external check. Tests: `tests/test_blackbox_validator.py`. Effort note: this role benefits from high reasoning effort (semantic judgment / adversarial design), unlike the deterministic quality gate.
+
+## TODO — Playwright smoke-regression gate (heavier follow-on)
+
+The quality gate above is static. The complementary dynamic gate: after each shift, re-run the `is_smoke: true` browser flows through the **frontend origin** and flip any that now 502/empty back to `passes: false` automatically — without waiting for a manually-triggered `evaluate` shift. This is what would have caught the proxy regression *at the shift that introduced it*. Needs: servers running + Playwright MCP, a cheap "load + non-empty + no console error" probe per smoke feature, and wiring into `generate-loop` (e.g. every N shifts or when shared config files changed in the diff). Evaluator prompt already specifies the frontend-origin rule; this automates the cadence.
+
+## Script execution self-repair loop
+
+**Why**: rome-guide data pipeline (2026-06-08) exposed that Generator-produced data scripts fail in ways that need human diagnosis — wrong QIDs (hallucinated), Wikimedia UA blocks, 429 rate limits. The generate-loop has a refine cycle for feature code, but there's no equivalent for standalone scripts. Each failure required multiple manual kill-restart cycles.
+
+**What**: When a harness-managed script exits non-zero OR its stdout/stderr matches known error patterns, automatically call a lightweight Script Repair agent that:
+1. Reads the script source + the last N lines of output
+2. Identifies the failure category: wrong ID, blocked UA, rate limit, missing fallback, etc.
+3. Patches the script in-place and re-runs (up to 3 attempts)
+4. If it can't repair, escalates with a structured error report
+
+**Error patterns to detect** (from rome-guide incident):
+- `403 Forbidden` on image download → switch `requests.get` to `subprocess.run(['curl', ...])`
+- QID resolves to wrong entity (label mismatch) → replace hardcoded ID with `wbsearchentities` name lookup
+- `429 Too Many Requests` → add `Retry-After` backoff, increase inter-request delay
+- `0 items found` for a venue → try alternative SPARQL property (P276 → P195)
+
+**Dry-run validation gate** (prerequisite): before running a script at full scale, always run with `--limit 3` or `--dry-run` and check that at least 1 item succeeded end-to-end. Abort and repair if 0 succeed.
+
+**When to do it**: next time a data pipeline or utility script is generated for a project (rome-guide or any new harness project).
+
 ## Backend: `anthropic_api` — direct Messages API
 
 **Why**: From 2026-06-15, `claude -p` (the only backend we currently have) drains a separate, capped monthly credit pool on Anthropic subscriptions, metered at full API rates. For heavy or production usage the subscription path stops making sense — at that point we want a backend that talks directly to the Anthropic Messages API with our own API key, bypassing the subscription entirely (same rates, no $20 minimum, no monthly cap to worry about).
@@ -144,3 +191,38 @@ Track these informally first; formalize into prompt rules or auto-checks once we
 - **Target users**: solo (the bot owner) vs. multi-user. Affects whether the built app needs auth/isolation.
 - **Per-build budget cap**: Anthropic's reference runs are 6h / $200. We need a sane default and a hard ceiling.
 - **Generator self-testing**: Anthropic's two articles disagree on whether the Generator should self-test with a browser. Step 1 says no (just curl + pytest). Step 2 with Evaluator can revisit.
+
+---
+
+## Project: rome-guide — Offline AI Museum Guide for Italy Trip
+
+**Target date**: July 2026 (user going to Rome/Vatican next month)
+
+### Overview
+Offline AI guide for Rome and Vatican museums. Uses CLIP image search + VLM (Qwen2-VL) for artwork identification and Q&A. Designed for no-internet / poor-signal environments inside museums.
+
+### Two operation modes (both required)
+1. **Laptop mode**: Laptop in backpack as server, iPhone 17 PM as client via WiFi hotspot. Best quality, most venues.
+2. **Phone mode (Xiaomi 11)**: For venues that ban backpacks (e.g., Borghese Gallery). Xiaomi 11 as server (Snap 888, 8-12GB RAM), iPhone 17 PM as client via hotspot.
+
+### Scope
+- **Sites**: Vatican Museums (Sistine Chapel, Raphael Rooms, antiquities), St. Peter's Basilica, Borghese Gallery, Colosseum, Roman Forum, Pantheon, Castel Sant'Angelo
+- **Knowledge base**: ~500-800 artworks, Wikipedia + museum open data, pre-downloaded images
+- **Test set**: ~100-200 user photos + supplemental internet photos of same venues
+
+### Key components for harness-runner to build
+1. Ollama setup + model download in init.sh (Qwen2-VL 7B for laptop, 2B for phone mode)
+2. CLIP image indexing pipeline (build_index.py — one-time offline step)
+3. FastAPI backend: /search/image (CLIP match) + /chat (VLM Q&A with artwork context)
+4. Mobile-optimized React frontend: camera capture, result display, follow-up chat
+5. Knowledge base: artworks.json + images/ + ChromaDB/SQLite-vec embeddings
+6. Accuracy Evaluator: use test photo set, measure Top-1 / Top-3 recognition accuracy
+
+### Novel challenges vs mini-hex
+- External dependency management (Ollama install + model pull in init.sh)
+- ML data pipeline (CLIP embedding build step, not just CRUD)
+- Dual deployment target (laptop vs phone server)
+- Quantitative accuracy testing with real photos as ground truth
+
+### When to start
+After Italy trip planning is confirmed. Knowledge base prep (scraping + cleaning) should start ~2 weeks before departure.
