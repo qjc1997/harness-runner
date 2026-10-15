@@ -107,6 +107,28 @@ If the startup sanity check fails (server won't boot, basic page errors, tests f
 - Append a shift-log entry noting what broke and how you fixed it.
 - Do NOT flip any feature's `passes` flag — the fix is its own kind of shift.
 
+## When you are blocked on the owner
+
+If every remaining feature you could work on depends on something only the owner can decide — an existing test that contradicts the spec, an ambiguous or conflicting requirement, a missing credential or external resource — do **not** spend the shift re-checking the block, and do not idle. Instead:
+
+1. Commit any useful partial work as `wip: f<id> partial — <what's done>`.
+2. Write `NEEDS_HUMAN.md` in the project root:
+
+```
+# Needs owner decision
+**Blocked features:** f293, f311 (and dependants f299, f304)
+**Question:** <one or two sentences the owner can answer without reading code>
+**Why:** <the conflict, with file:line>
+**Options:**
+- A) <option> — <consequence>  ← recommended
+- B) <option> — <consequence>
+**If A, the exact edit:** <file:line, old → new>
+```
+
+3. Append a short shift-log entry and end the shift. The loop stops, notifies the owner, and resumes after `harness-runner resolve`.
+
+Never write `NEEDS_HUMAN.md` for things you can decide yourself from `app_spec.md`, `docs/`, the feature steps or the progress log.
+
 ## When you don't know what to do
 
 If `feature_list.json` has no `passes: false` entries left, write a single line to `claude-progress.txt`:

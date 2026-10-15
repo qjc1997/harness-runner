@@ -1,16 +1,15 @@
 import sys
 
-from .budget import BudgetExceededError, assert_under_budget
-from .paths import count_features, projects_dir
+from .paths import projects_dir
 from .quality_gate import append_quality_gate_to_progress, quality_gate
-from .retry import generate_with_retry
 from .roles.blackbox_validator import blackbox
 from .roles.code_reviewer import append_code_review_to_progress, code_review
 from .roles.evaluator import evaluate
 from .roles.generator import generate
 from .roles.planner import plan
 from .roles.refiner import refine
-from .run import run
+from .run import generator_loop, run
+from .stuck import resolve
 from .scaffold import init
 
 
@@ -62,6 +61,17 @@ def _usage() -> None:
                 "      its real public interface with real-world inputs from",
                 "      blackbox_cases.json, judges semantic correctness, and detects",
                 "      mocked dependencies. Reports only (never edits). Exits 1 on FAIL.",
+                "",
+                '  harness-runner resolve <project-name> "<decision>" [--allow-test-edit <path>]...',
+                "      Record an owner decision after a loop stopped for a human",
+                "      (exit code 3): appends it to claude-progress.txt, clears",
+                "      NEEDS_HUMAN.md, authorises edits to the listed tests, commits.",
+                "",
+                "  Loops (run / generate-loop) stop with exit code 3 and notify when a",
+                "  shift writes NEEDS_HUMAN.md or HARNESS_STUCK_SHIFTS (default 2)",
+                "  consecutive shifts make no progress. Notifications: Discord webhook",
+                "  (HARNESS_DISCORD_WEBHOOK or ~/.config/harness-runner/discord_webhook),",
+                "  HARNESS_NOTIFY_CMD, macOS notification centre.",
             ]
         ),
         file=sys.stderr,
@@ -119,7 +129,7 @@ def main() -> None:
         loop, positional = _parse_loop_flag(rest, default=1)
         if len(positional) < 1:
             _usage()
-        run(positional[0], loop=loop)
+        sys.exit(run(positional[0], loop=loop))
 
     elif cmd == "plan":
         if len(rest) != 1:
@@ -143,28 +153,7 @@ def main() -> None:
         if n <= 0:
             print(f"invalid shift count: {n}", file=sys.stderr)
             sys.exit(1)
-        project_dir = projects_dir() / project_name
-        successes = 0
-        for i in range(1, n + 1):
-            try:
-                assert_under_budget(project_dir)
-            except BudgetExceededError as e:
-                print(
-                    f"\n[loop] budget exceeded — stopping at shift {i}/{n}: {e}",
-                    file=sys.stderr,
-                )
-                break
-            passing, total = count_features(project_dir)
-            if total > 0 and passing >= total:
-                print(
-                    f"\n[loop] all {total} features passing — exiting early at shift {i}/{n}",
-                    file=sys.stderr,
-                )
-                break
-            print(f"\n========== Shift {i}/{n} ==========\n", file=sys.stderr)
-            if generate_with_retry(project_name, generate):
-                successes += 1
-        print(f"\n[loop] {successes}/{n} shifts succeeded", file=sys.stderr)
+        sys.exit(generator_loop(project_name, n))
 
     elif cmd == "refine":
         if len(rest) < 2:
@@ -271,6 +260,22 @@ def main() -> None:
             print(f"[blackbox] error: {result.error}", file=sys.stderr)
         if result.verdict == "fail":
             sys.exit(1)
+
+    elif cmd == "resolve":
+        allow: list = []
+        words: list = []
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--allow-test-edit" and i + 1 < len(rest):
+                allow.append(rest[i + 1])
+                i += 2
+            else:
+                words.append(rest[i])
+                i += 1
+        if len(words) < 2:
+            _usage()
+        resolve(projects_dir() / words[0], " ".join(words[1:]), allow)
+        print(f"[resolve] decision recorded for {words[0]}; run generate-loop to continue", file=sys.stderr)
 
     else:
         _usage()
