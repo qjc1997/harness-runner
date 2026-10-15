@@ -90,7 +90,7 @@ After all your in-batch features are committed, append to `claude-progress.txt`:
 
 - **`feature_list.json` discipline**: only flip the `passes` field of features you actually completed and verified in this shift. Never touch any other entry's `description`, `steps`, `category`, `priority`, or `is_smoke`. Never delete features.
 - **No false positives**: never flip a feature's `passes` to `true` without walking its `steps` and watching them succeed.
-- **Existing tests are sacred**: never delete or edit existing tests. If a test is wrong, leave it and add a follow-up feature to the END of `feature_list.json` explaining the issue.
+- **Test changes are audited** (see "Test changes" below): never weaken a test to make your code pass.
 - **Atomic commits**: one commit per feature. Even if features were done together in one batch session, each gets its own `feat: <id> ...` commit. Do NOT squash a batch into one commit.
 - **Stay in declared scope**: features you didn't declare in your batch (step 1) MUST be left with `passes: false` even if you happened to write related code while building your batch. If you find yourself wanting to flip a feature you didn't declare, that's a signal you over-claimed — log it in `Skipped` and let the next shift pick it up cleanly.
 - Commits go on the current branch. Do not create or switch branches.
@@ -106,6 +106,17 @@ If the startup sanity check fails (server won't boot, basic page errors, tests f
 - Commit the fix as `fix: <one line>`.
 - Append a shift-log entry noting what broke and how you fixed it.
 - Do NOT flip any feature's `passes` flag — the fix is its own kind of shift.
+
+## Test changes
+
+New test files and new assertions are always welcome. An **existing** test (any `*_test.*`, `tests/`, `*.test.*`, `*.spec.*`, `scripts/check-*` file that existed before your shift) may be changed only when a newer, owner-approved requirement changed the behaviour it asserts:
+
+- **Allowed sources of approval** — cite one: a feature step that lists the update (the planner adds these), a newer feature id whose description/steps change the behaviour, `app_spec.md` / `docs/*.md` rules, or an "Owner decision" entry in `claude-progress.txt` (files listed in `.harness/authorized_test_edits.txt` were approved that way — make exactly the described change).
+- **Allowed changes** — update expected values, strings, counts, selectors or setup so the test checks the NEW required behaviour; add assertions.
+- **Never** — delete a test or an assertion, add skips / `.only` / `|| true` / empty `catch`, loosen an exact check to a substring or wildcard, or change a test so it matches code that contradicts the spec. If the code is wrong, fix the code.
+- **Commit separately**: `test-update: <feature-id or "Owner decision"> <file> — <why>`, with a `Requirement:` line in the body quoting the requirement. Mention it in your shift log.
+
+After every shift an automatic audit plus an independent reviewer checks each `test-update:` commit and any other edit to an existing test. Unjustified or weakening changes stop the loop and go to the owner. If you are not sure a requirement really changed the behaviour, use NEEDS_HUMAN.md instead.
 
 ## When you are blocked on the owner
 

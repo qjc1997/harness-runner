@@ -10,6 +10,8 @@ from ..history import record_shift
 from ..paths import count_features, format_progress, projects_dir, prompts_dir
 from ..quality_gate import append_quality_gate_to_progress, quality_gate
 from .code_reviewer import CodeReviewResult, append_code_review_to_progress, code_review
+from ..stuck import head_sha
+from ..test_audit import audit_shift
 
 # Model for Generator shifts. Override with HARNESS_GENERATOR_MODEL (any id/alias
 # accepted by the backend); other roles keep their own defaults.
@@ -35,6 +37,7 @@ def generate(project_name: str) -> None:
 
     # Snapshot progress before the shift to detect "shift ran but moved nothing".
     passing_before, total = count_features(project_dir)
+    sha_before = head_sha(project_dir)
 
     system_prompt = (prompts_dir() / "generator.md").read_text(encoding="utf-8")
     user_prompt = (
@@ -100,6 +103,12 @@ def generate(project_name: str) -> None:
             append_code_review_to_progress(project_dir, review_result, new_passing_ids)
         except Exception as rev_err:
             print(f"[code_reviewer] unexpected error (skipping): {rev_err}", file=sys.stderr)
+
+    # ── Test-change audit ─────────────────────────────────────────────────────
+    # Existing tests may change only in cited `test-update:` commits that keep
+    # coverage (prompts/generator.md "Test changes"). Problems → NEEDS_HUMAN.md,
+    # which stops the loop and notifies the owner.
+    audit_shift(project_dir, sha_before)
 
     # ── Quality Gate (deterministic) ──────────────────────────────────────────
     # Static checks that catch degraded-data and config-drift bugs the LLM

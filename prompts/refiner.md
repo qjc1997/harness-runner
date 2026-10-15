@@ -81,6 +81,21 @@ After fetching docs, explicitly ask yourself: **"What operations does the refere
 
 ---
 
+## Test impact analysis — MANDATORY when a requirement CHANGES existing behaviour
+
+New requirements often change behaviour that existing tests and check scripts already assert (a default flips, a label changes, a start rule tightens, a new row appears). If those tests are not updated in the plan, the Generator is not allowed to touch them and every later shift stalls.
+
+Before writing features:
+
+1. List each behaviour the new requirements **change** (not just add).
+2. Search the project's tests and check scripts for assertions about that behaviour (e.g. `grep -rn` over `*_test.go`, `tests/`, `scripts/check-*`, `*.test.*` for the old values, messages, selectors, defaults).
+3. For every assertion that the new requirement makes obsolete, put an explicit step into the feature that introduces the change:
+   `Update <file>:<line> — expected <old> → <new> (requirement: <short quote of the new requirement>)`
+   Keep the rest of that test unchanged; only expected values that the new requirement changes may move.
+4. Record the list under **Test updates planned** in your progress-log section (or "none found").
+
+These steps are part of the owner-approved plan, so the Generator may make exactly those test edits without asking.
+
 ## feature_list.json — append-only
 
 Continue the existing ID sequence. If the last existing feature is `f050`, your first new feature is `f051`.
@@ -141,6 +156,9 @@ After writing the new features to `feature_list.json`, append to `claude-progres
 
 ### Smoke set status
 <current total is_smoke:true count>/<MAX 8>. <added/unchanged>. <any staleness notes>.
+
+### Test updates planned
+<file:line — old → new, per changed behaviour; or "none found">
 
 ### Watch out (for first Generator shift on these features)
 <anything the Generator should know about the new requirements or potential conflicts with existing implementation>
