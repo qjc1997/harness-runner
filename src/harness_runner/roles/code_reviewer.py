@@ -133,7 +133,7 @@ def _get_shift_diff(project_dir: Path, num_features: int) -> str:
         n = max(num_features + 1, 2)
         result = subprocess.run(
             ["git", "diff", f"HEAD~{n}", "HEAD",
-             "--", "*.py", "*.ts", "*.tsx", "*.js"],
+             "--", "*.py", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.go"],
             cwd=str(project_dir),
             capture_output=True,
             text=True,
@@ -144,7 +144,7 @@ def _get_shift_diff(project_dir: Path, num_features: int) -> str:
             # Fallback: just last commit
             result = subprocess.run(
                 ["git", "diff", "HEAD~1", "HEAD",
-                 "--", "*.py", "*.ts", "*.tsx", "*.js"],
+                 "--", "*.py", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.go"],
                 cwd=str(project_dir),
                 capture_output=True,
                 text=True,
