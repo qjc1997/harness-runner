@@ -96,7 +96,14 @@ class DeterministicTests(unittest.TestCase):
     def test_edit_outside_test_update_commit(self):
         self.r.write("app_test.go", GO_TEST.replace("!= 2", "!= 5"))
         self.r.commit("feat: f297 lobby rows")
-        self.assertIn("existing test edited outside a 'test-update:' commit", self.problems())
+        self.assertIn("existing test assertions edited outside a 'test-update:' commit", self.problems())
+
+    def test_setup_only_edit_goes_to_review_not_block(self):
+        self.r.write("scripts/check-manage.mjs", "const shots = process.env.SCREENS_DIR || 'docs/screens';\n" + JS_CHECK)
+        self.r.commit("feat: f324 screenshots honour SCREENS_DIR")
+        res = test_audit.deterministic_audit(self.r.dir, self.r.base)
+        self.assertEqual(res.issues, [])
+        self.assertEqual(len(res.review_commits), 1)
 
     def test_missing_citation(self):
         self.r.write("app_test.go", GO_TEST.replace("!= 2", "!= 5"))

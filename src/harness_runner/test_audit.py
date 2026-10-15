@@ -35,6 +35,10 @@ _TEST_PATH = re.compile(
 _ASSERTION = re.compile(
     r"\bt\.(Fatal|Fatalf|Error|Errorf)\(|\b(assert\w*|expect|check|require\.\w+)\s*\(|self\.assert\w+\(|\bfail\(|\bFAIL\b"
 )
+# Lines that state an expectation: assertions, plus conditions/comparisons that guard them
+# (Go's `if got != 2 { t.Fatal(...) }` keeps the expected value on the if line).
+_EXPECTATION = re.compile(_ASSERTION.pattern + r"|^\s*(if|elif|while)\b.*(==|!=|<=|>=|<|>)|===|!==|\b(toBe|toEqual|toContain|toMatch)\(")
+
 _WEAKENING = [
     (re.compile(r"\|\|\s*true\b"), "'|| true' makes a check always pass"),
     (re.compile(r"\bt\.Skip(f|Now)?\("), "test skipped"),
@@ -58,6 +62,7 @@ class AuditResult:
     issues: List[AuditIssue] = field(default_factory=list)
     reviewed_commits: int = 0
     cost_usd: float = 0.0
+    review_commits: set = field(default_factory=set)  # non-test-update edits that need LLM review
 
 
 def is_test_path(path: str) -> bool:
@@ -102,16 +107,20 @@ def deterministic_audit(project_dir: Path, sha_before: str) -> AuditResult:
             if status.startswith("D"):
                 result.issues.append(AuditIssue(short, path, "an existing test file was deleted"))
                 continue
-            if not message.lower().startswith("test-update:"):
-                result.issues.append(AuditIssue(short, path, "existing test edited outside a 'test-update:' commit"))
-            elif not _CITATION.search(message):
-                result.issues.append(AuditIssue(short, path, "test-update commit does not cite the requirement (feature id or 'Requirement:')"))
-            old, new = _show(project_dir, f"{c}^", path) or "", _show(project_dir, c, path) or ""
-            if _count_assertions(new) < _count_assertions(old):
-                result.issues.append(AuditIssue(short, path, f"assertions dropped from {_count_assertions(old)} to {_count_assertions(new)}"))
             patch = _git(project_dir, "show", "--format=", c, "--", path).splitlines()
             added = "\n".join(ln[1:] for ln in patch if ln.startswith("+") and not ln.startswith("+++"))
             removed = "\n".join(ln[1:] for ln in patch if ln.startswith("-") and not ln.startswith("---"))
+            touches_assertions = any(_EXPECTATION.search(ln) for ln in (added + "\n" + removed).splitlines())
+            if message.lower().startswith("test-update:"):
+                if not _CITATION.search(message):
+                    result.issues.append(AuditIssue(short, path, "test-update commit does not cite the requirement (feature id or 'Requirement:')"))
+            elif touches_assertions:
+                result.issues.append(AuditIssue(short, path, "existing test assertions edited outside a 'test-update:' commit"))
+            else:
+                result.review_commits.add(c)  # paths/setup/comments only: independent review, not a hard stop
+            old, new = _show(project_dir, f"{c}^", path) or "", _show(project_dir, c, path) or ""
+            if _count_assertions(new) < _count_assertions(old):
+                result.issues.append(AuditIssue(short, path, f"assertions dropped from {_count_assertions(old)} to {_count_assertions(new)}"))
             for pat, why in _WEAKENING:
                 if len(pat.findall(added)) > len(pat.findall(removed)):
                     result.issues.append(AuditIssue(short, path, why))
@@ -142,7 +151,7 @@ def llm_audit(project_dir: Path, sha_before: str, result: AuditResult) -> AuditR
             pass
     for c in _shift_commits(project_dir, sha_before):
         message = _git(project_dir, "log", "-1", "--format=%B", c)
-        if not message.lower().startswith("test-update:"):
+        if not message.lower().startswith("test-update:") and c not in result.review_commits:
             continue
         cited = {fid: features[fid] for fid in re.findall(r"\bf\d{3,}\b", message) if fid in features}
         diff = _git(project_dir, "show", "--format=", c)[:20000]
