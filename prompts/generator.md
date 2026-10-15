@@ -59,6 +59,14 @@ For **each** feature in your batch, in order:
 3. **Only after verification**, flip that feature's `passes` from `false` to `true` in `feature_list.json`. Touch no other entry's fields.
 4. **Commit atomically**: `git add -A && git commit -m "feat: <id> <short description>"`. **One commit per feature**, even when you did the whole batch in one go. This preserves `git bisect`, `git blame`, and selective revert; the shift log can summarize, but git history must stay granular.
 
+#### Verification budget (keep shifts fast)
+
+Most shift time is spent waiting on test runs, not on writing code. So:
+- **While iterating**, run only the checks that cover the feature you are changing (its own script / targeted test) plus the project's fast regression tier if it has one.
+- **Run the project's full regression suite once**, after the last change and before the final commit — not after every edit. Re-run it only if that run failed and you changed code to fix it.
+- **Never wait with `sleep` or polling loops** on background commands. Run checks in the foreground with a timeout and read the result directly.
+- **Keep test output short in your context**: pipe long runs through `tail`/`grep` for the summary and failures instead of reading full logs.
+
 If a feature turns out bigger than expected mid-implementation:
 - Stop cleanly at a sub-boundary
 - Leave that feature's `passes` as `false`

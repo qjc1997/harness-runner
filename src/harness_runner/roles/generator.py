@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -9,6 +10,14 @@ from ..history import record_shift
 from ..paths import count_features, format_progress, projects_dir, prompts_dir
 from ..quality_gate import append_quality_gate_to_progress, quality_gate
 from .code_reviewer import CodeReviewResult, append_code_review_to_progress, code_review
+
+# Model for Generator shifts. Override with HARNESS_GENERATOR_MODEL (any id/alias
+# accepted by the backend); other roles keep their own defaults.
+DEFAULT_GENERATOR_MODEL = "claude-opus-5-5"
+
+
+def generator_model() -> str:
+    return os.environ.get("HARNESS_GENERATOR_MODEL") or DEFAULT_GENERATOR_MODEL
 
 
 def generate(project_name: str) -> None:
@@ -45,6 +54,7 @@ def generate(project_name: str) -> None:
             cwd=str(project_dir),
             prompt=user_prompt,
             system_prompt_append=system_prompt,
+            model=generator_model(),
             on_event=lambda e: print(backend.format_event(e), file=sys.stderr),
         )
     except ShiftTimeoutError as e:
