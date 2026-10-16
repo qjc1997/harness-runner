@@ -39,6 +39,9 @@ _ASSERTION = re.compile(
 # (Go's `if got != 2 { t.Fatal(...) }` keeps the expected value on the if line).
 _EXPECTATION = re.compile(_ASSERTION.pattern + r"|^\s*(if|elif|while)\b.*(==|!=|<=|>=|<|>)|===|!==|\b(toBe|toEqual|toContain|toMatch)\(")
 
+# Added lines that could end a test before its checks run.
+_EARLY_EXIT = re.compile(r"process\.exit\(\s*0?\s*\)|\bos\.Exit\(\s*0\s*\)|\bsys\.exit\(\s*0?\s*\)|^\s*return\b|\bt\.SkipNow\(")
+
 _WEAKENING = [
     (re.compile(r"\|\|\s*true\b"), "'|| true' makes a check always pass"),
     (re.compile(r"\bt\.Skip(f|Now)?\("), "test skipped"),
@@ -110,14 +113,16 @@ def deterministic_audit(project_dir: Path, sha_before: str) -> AuditResult:
             patch = _git(project_dir, "show", "--format=", c, "--", path).splitlines()
             added = "\n".join(ln[1:] for ln in patch if ln.startswith("+") and not ln.startswith("+++"))
             removed = "\n".join(ln[1:] for ln in patch if ln.startswith("-") and not ln.startswith("---"))
-            touches_assertions = any(_EXPECTATION.search(ln) for ln in (added + "\n" + removed).splitlines())
+            # Only removed/changed expectations matter: purely added checks strengthen the test.
+            changes_expectations = any(_EXPECTATION.search(ln) for ln in removed.splitlines())
             if message.lower().startswith("test-update:"):
                 if not _CITATION.search(message):
                     result.issues.append(AuditIssue(short, path, "test-update commit does not cite the requirement (feature id or 'Requirement:')"))
-            elif touches_assertions:
+            elif changes_expectations:
                 result.issues.append(AuditIssue(short, path, "existing test assertions edited outside a 'test-update:' commit"))
-            else:
-                result.review_commits.add(c)  # paths/setup/comments only: independent review, not a hard stop
+            elif removed.strip() or any(_EARLY_EXIT.search(ln) for ln in added.splitlines()):
+                result.review_commits.add(c)  # setup changed or an early exit added: independent review
+            # else: additions only (new checks) — always welcome
             old, new = _show(project_dir, f"{c}^", path) or "", _show(project_dir, c, path) or ""
             if _count_assertions(new) < _count_assertions(old):
                 result.issues.append(AuditIssue(short, path, f"assertions dropped from {_count_assertions(old)} to {_count_assertions(new)}"))

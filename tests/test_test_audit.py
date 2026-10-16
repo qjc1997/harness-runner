@@ -98,7 +98,21 @@ class DeterministicTests(unittest.TestCase):
         self.r.commit("feat: f297 lobby rows")
         self.assertIn("existing test assertions edited outside a 'test-update:' commit", self.problems())
 
+    def test_added_checks_are_welcome(self):
+        self.r.write("scripts/check-manage.mjs", JS_CHECK + "check(note === 'x', 'new note check');\n")
+        self.r.commit("feat: f331 extend check with the localhost note")
+        res = test_audit.deterministic_audit(self.r.dir, self.r.base)
+        self.assertEqual((res.issues, res.review_commits), ([], set()))
+
+    def test_added_early_exit_goes_to_review(self):
+        self.r.write("scripts/check-manage.mjs", "process.exit(0);\n" + JS_CHECK)
+        self.r.commit("feat: f331 tweak")
+        self.assertEqual(len(test_audit.deterministic_audit(self.r.dir, self.r.base).review_commits), 1)
+
     def test_setup_only_edit_goes_to_review_not_block(self):
+        self.r.write("scripts/check-manage.mjs", "const shots = 'docs/screens';\n" + JS_CHECK)
+        self.r.commit("feat: f324 screenshots")
+        self.r.base = head_sha(self.r.dir)
         self.r.write("scripts/check-manage.mjs", "const shots = process.env.SCREENS_DIR || 'docs/screens';\n" + JS_CHECK)
         self.r.commit("feat: f324 screenshots honour SCREENS_DIR")
         res = test_audit.deterministic_audit(self.r.dir, self.r.base)
