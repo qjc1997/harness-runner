@@ -98,6 +98,20 @@ class DeterministicTests(unittest.TestCase):
         self.r.commit("feat: f297 lobby rows")
         self.assertIn("existing test assertions edited outside a 'test-update:' commit", self.problems())
 
+    def test_tests_written_for_current_plan_are_new_work(self):
+        self.r.write("feature_list.json", json.dumps([{"id": "f346", "passes": False}]))
+        self.r.commit("harness: refiner output")
+        self.r.write("scripts/check-hygiene.mjs", "check(a === 1, 'x');\n")
+        self.r.commit("feat: f346 new hygiene check")
+        self.r.base = head_sha(self.r.dir)  # next shift starts here
+        self.r.write("scripts/check-hygiene.mjs", "check(a === 1 && b === 2, 'x stricter');\n")
+        self.r.commit("feat: f347 tighten hygiene check")
+        self.assertEqual(self.problems(), [])
+        # weakening is still caught for new-work tests
+        self.r.write("scripts/check-hygiene.mjs", "check(a === 1 || true, 'x');\n")
+        self.r.commit("feat: f347 relax")
+        self.assertIn("'|| true' makes a check always pass", self.problems())
+
     def test_added_checks_are_welcome(self):
         self.r.write("scripts/check-manage.mjs", JS_CHECK + "check(note === 'x', 'new note check');\n")
         self.r.commit("feat: f331 extend check with the localhost note")

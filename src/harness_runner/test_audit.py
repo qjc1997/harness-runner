@@ -92,21 +92,33 @@ def _shift_commits(project_dir: Path, sha_before: str) -> List[str]:
     return [c for c in _git(project_dir, "rev-list", "--reverse", f"{sha_before}..HEAD").split() if c]
 
 
+def _tests_added_since_plan(project_dir: Path, sha_before: str) -> set:
+    """Test files added between the latest planner/refiner commit and the start of this shift."""
+    plan = _git(project_dir, "log", "-1", "-E", "--format=%H", "--grep=^harness: (planner|refiner) output", sha_before or "HEAD").strip()
+    if not plan or not sha_before:
+        return set()
+    out = _git(project_dir, "log", "--diff-filter=A", "--name-only", "--format=", f"{plan}..{sha_before}")
+    return {ln.strip() for ln in out.splitlines() if ln.strip() and is_test_path(ln.strip())}
+
+
 def deterministic_audit(project_dir: Path, sha_before: str) -> AuditResult:
     """Check every commit of the shift that modifies an existing test file."""
     result = AuditResult()
-    created: set = set()  # test files added during this shift are new work, not legacy edits
+    # Test files added during this shift, or since the latest planner/refiner commit (i.e. written for
+    # the requirements currently being built), are new work, not legacy tests: they may be refined freely.
+    created: set = _tests_added_since_plan(project_dir, sha_before)
     for c in _shift_commits(project_dir, sha_before):
         message = _git(project_dir, "log", "-1", "--format=%B", c)
         short = c[:8]
         changed = [ln.split("\t") for ln in _git(project_dir, "diff-tree", "--no-commit-id", "-r", "--name-status", c).splitlines()]
         for parts in changed:
             status, path = parts[0], parts[-1]
-            if not is_test_path(path) or path in created:
+            if not is_test_path(path):
                 continue
             if status.startswith("A"):
                 created.add(path)  # new test files are always welcome
                 continue
+            is_new_work = path in created
             if status.startswith("D"):
                 result.issues.append(AuditIssue(short, path, "an existing test file was deleted"))
                 continue
@@ -115,7 +127,9 @@ def deterministic_audit(project_dir: Path, sha_before: str) -> AuditResult:
             removed = "\n".join(ln[1:] for ln in patch if ln.startswith("-") and not ln.startswith("---"))
             # Only removed/changed expectations matter: purely added checks strengthen the test.
             changes_expectations = any(_EXPECTATION.search(ln) for ln in removed.splitlines())
-            if message.lower().startswith("test-update:"):
+            if is_new_work:
+                pass  # written for the current plan: no citation needed; weakening checks below still apply
+            elif message.lower().startswith("test-update:"):
                 if not _CITATION.search(message):
                     result.issues.append(AuditIssue(short, path, "test-update commit does not cite the requirement (feature id or 'Requirement:')"))
             elif changes_expectations:
