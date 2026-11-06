@@ -171,6 +171,10 @@ def resolve(project_dir: Path, decision: str, allow_test_edits: list) -> None:
             for p in allow_test_edits:
                 f.write(p.strip() + "\n")
         lines.append("- Authorised test edits (make exactly the change described above): " + ", ".join(allow_test_edits))
+    from .roles.griller import attach_answers  # lazy: griller imports this module
+
+    if attach_answers(project_dir, decision):
+        lines.append("- Recorded as the answers to the open grill round; run `refine --continue` next.")
     question = needs_human(project_dir)
     if question is not None:
         archive = project_dir / STATE_DIR / "resolved"

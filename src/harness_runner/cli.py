@@ -7,6 +7,7 @@ from .roles.code_reviewer import append_code_review_to_progress, code_review
 from .roles.evaluator import evaluate
 from .roles.generator import generate
 from .roles.planner import plan
+from .roles.griller import grill_then_refine
 from .roles.refiner import refine
 from .run import generator_loop, run
 from .stuck import resolve
@@ -37,7 +38,11 @@ def _usage() -> None:
                 "  harness-runner generate-loop <project-name> [n=5]",
                 "      Multiple generator shifts back-to-back.",
                 "",
-                '  harness-runner refine <project-name> "<requirements>"',
+                '  harness-runner refine <project-name> "<requirements>" [--no-grill]',
+                "      First grills the requirements (asynchronous owner interview): open",
+                "      decisions go to NEEDS_HUMAN.md + notification (exit 3); answer with",
+                "      `resolve`, then `refine <project-name> --continue` for the next round.",
+                "      Plans once a round has no questions. --no-grill skips the interview.",
                 "      Append-only incremental planning: read existing feature_list.json",
                 "      and add new features for new requirements. Never modifies",
                 "      existing features. Run generate-loop afterwards to implement them.",
@@ -156,11 +161,17 @@ def main() -> None:
         sys.exit(generator_loop(project_name, n))
 
     elif cmd == "refine":
-        if len(rest) < 2:
+        flags = {a for a in rest if a in ("--no-grill", "--continue")}
+        words = [a for a in rest if a not in flags]
+        if not words or (len(words) < 2 and "--continue" not in flags):
             _usage()
-        project_name = rest[0]
-        requirements = " ".join(rest[1:]).strip()
-        refine(project_name, requirements)
+        project_name = words[0]
+        requirements = " ".join(words[1:]).strip()
+        if "--no-grill" in flags:
+            refine(project_name, requirements)
+        else:
+            sys.exit(grill_then_refine(project_name, projects_dir() / project_name,
+                                       requirements or None, "--continue" in flags, refine))
 
     elif cmd == "evaluate":
         if len(rest) != 1:
